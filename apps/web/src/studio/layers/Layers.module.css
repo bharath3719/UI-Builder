@@ -1,0 +1,158 @@
+/* The layers outline (PLAN.md §8: 24px rows, icons with a tooltip, hairlines rather
+   than shadows, one accent for selection). Rows are full-bleed — the hover and
+   selection fills read as bands across the panel, which is what makes a deep tree
+   scannable — so the section around this one is flush. */
+
+.tree {
+  height: 100%;
+  overflow: auto;
+  padding: var(--sp-2) 0;
+  /* A single tab stop for the whole tree; the active row is named with
+     aria-activedescendant rather than focused. */
+  outline: none;
+}
+
+.tree:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--c-focus-ring);
+}
+
+/* --- Rows ----------------------------------------------------------------- */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--h-layer);
+  padding-right: var(--sp-3);
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  white-space: nowrap;
+  cursor: default;
+  /* Dragging a row must not paint a text selection across the panel behind it. The
+     row's pointerdown deliberately does not preventDefault, so this is what stops it. */
+  user-select: none;
+  touch-action: none;
+}
+
+.rowHovered {
+  background: var(--c-surface-hover);
+}
+
+.rowSelected {
+  background: var(--c-accent-subtle);
+  color: var(--c-accent);
+}
+
+/* Hidden is a property of the design, not of the row: the layer stays legible, it
+   just stops claiming to be on the canvas. */
+.rowHidden .name,
+.rowHidden .icon {
+  opacity: 0.45;
+}
+
+/* The node is on the drag ghost now; the row is where it came from. */
+.rowDragging {
+  opacity: 0.5;
+}
+
+/* --- Row parts ------------------------------------------------------------- */
+
+.caret {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 14px;
+  height: 100%;
+  color: var(--c-text-subtle);
+}
+
+.rowSelected .caret {
+  color: inherit;
+}
+
+.icon {
+  flex: none;
+  color: var(--c-text-muted);
+}
+
+.rowSelected .icon {
+  color: inherit;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowSelected .name {
+  font-weight: var(--fw-medium);
+}
+
+/* Matches the canvas selection label: a document can outlive the library that made it,
+   and a node whose type is gone must still be findable. */
+.unknown {
+  color: var(--c-danger);
+}
+
+.rename {
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+  padding: 0 var(--sp-2);
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--r-sm);
+  color: var(--c-text);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+}
+
+.rename:focus-visible {
+  outline: none;
+}
+
+/* --- Toggles --------------------------------------------------------------- */
+
+/* At rest the row is name and icon only. A column of eyes and padlocks down every row
+   would out-weigh the names they belong to (§8: no decoration). */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex: none;
+  margin-left: var(--sp-2);
+}
+
+.action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--c-text-subtle);
+  cursor: default;
+  opacity: 0;
+}
+
+.row:hover .action {
+  opacity: 1;
+}
+
+/* A hidden or locked layer says so whether or not the pointer is anywhere near it. */
+.actionOn {
+  opacity: 1;
+  color: var(--c-text-muted);
+}
+
+.action:hover {
+  background: var(--c-surface-active);
+  color: var(--c-text);
+}

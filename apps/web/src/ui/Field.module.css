@@ -1,0 +1,81 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.label {
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.input {
+  height: 32px;
+  padding: 0 var(--sp-4);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  color: var(--c-text);
+  font-size: var(--fs-md);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.input::placeholder {
+  color: var(--c-text-subtle);
+}
+
+/* The accent ring is the same one selection uses on canvas, so "focused" reads
+   identically wherever it appears. */
+.input:focus {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px var(--c-focus-ring);
+}
+
+.input:disabled {
+  background: var(--c-surface-hover);
+  color: var(--c-text-muted);
+}
+
+.invalid,
+.invalid:focus {
+  border-color: var(--c-danger);
+}
+
+.invalid:focus {
+  box-shadow: 0 0 0 3px var(--c-danger-subtle);
+}
+
+.error {
+  color: var(--c-danger);
+  font-size: var(--fs-sm);
+}
+
+.hint {
+  color: var(--c-text-subtle);
+  font-size: var(--fs-sm);
+}
+
+/* A fixed-width prefix, for the slug field: "acme.builder/" then the input. */
+.affixed {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.affix {
+  color: var(--c-text-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+.affixed .input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}

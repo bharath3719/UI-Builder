@@ -1,0 +1,276 @@
+/* The inspector panel — PLAN.md §8, §9.
+
+   A fixed head (identity, switchers, tabs) over a scrolling body, so the cell being
+   edited is never scrolled out of sight. A field eight sections down that silently
+   writes to `md/hover` is the failure this layout exists to prevent. */
+
+.inspector {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* --- Empty and placeholder copy ------------------------------------------- */
+
+.empty {
+  padding: var(--sp-5);
+  color: var(--c-text-subtle);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}
+
+.empty code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+
+/* --- Identity -------------------------------------------------------------- */
+
+.identity {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  flex: none;
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.identityName {
+  overflow: hidden;
+  color: var(--c-text);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identityType {
+  flex: none;
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+}
+
+/* --- Breakpoint and state switchers ---------------------------------------- */
+
+.switchers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  flex: none;
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.switcherRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.switcherRow .switcher {
+  flex: 1;
+  min-width: 0;
+}
+
+.switcher {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+}
+
+/* Tight horizontal padding: five state names have to fit a 280px panel, and
+   "Disabled" is the one that decides it. */
+.chip {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  padding: 0 var(--sp-1);
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: var(--c-text-muted);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.chip:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.chipActive,
+.chipActive:hover {
+  background: var(--c-accent);
+  color: var(--c-text-on-accent);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: -1px;
+}
+
+/* --- Canvas width ---------------------------------------------------------- */
+
+.width {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 2px;
+  height: 24px;
+  padding: 0 var(--sp-3) 0 var(--sp-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+}
+
+.width:focus-within {
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-focus-ring);
+}
+
+.widthInput {
+  width: 42px;
+  border: 0;
+  background: none;
+  color: var(--c-text);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  text-align: right;
+  /* The spinners would eat half the field at this size. */
+  appearance: textfield;
+}
+
+.widthInput::-webkit-outer-spin-button,
+.widthInput::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.widthInput:focus {
+  outline: none;
+}
+
+.widthUnit {
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* --- Tabs ------------------------------------------------------------------ */
+
+.tabs {
+  display: flex;
+  flex: none;
+  padding: 0 var(--sp-5);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.tab {
+  height: var(--h-tab);
+  padding: 0 var(--sp-4);
+  border: 0;
+  /* The active indicator is a 2px underline that replaces this transparent one, so
+     the label never shifts by a pixel between states. */
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--c-text-muted);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--c-text);
+}
+
+.tabActive,
+.tabActive:hover {
+  border-bottom-color: var(--c-accent);
+  color: var(--c-accent);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: -2px;
+}
+
+/* --- Sections -------------------------------------------------------------- */
+
+.group {
+  border-bottom: 1px solid var(--c-border);
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  height: var(--h-tab);
+  padding: 0 var(--sp-5) 0 var(--sp-3);
+  border: 0;
+  background: none;
+  color: var(--c-text-muted);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.groupHeader:hover {
+  color: var(--c-text);
+}
+
+.groupHeader:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: -2px;
+}
+
+.groupChevron {
+  display: flex;
+  align-items: center;
+  color: var(--c-text-subtle);
+}
+
+/* Says "something in this section is set in the cell being edited" — the only thing
+   a collapsed section still needs to be able to say. */
+.groupDot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--r-circle);
+  background: var(--c-accent);
+}
+
+.groupBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-5) var(--sp-5);
+}

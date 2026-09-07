@@ -1,0 +1,85 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: var(--sp-8);
+  background: var(--c-backdrop);
+  overflow: auto;
+}
+
+.card {
+  width: 100%;
+  max-width: 360px;
+  padding: var(--sp-9);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+}
+
+.wordmark {
+  display: block;
+  margin-bottom: var(--sp-8);
+  color: var(--c-text);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.01em;
+}
+
+.title {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  margin-top: var(--sp-3);
+  color: var(--c-text-muted);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  margin-top: var(--sp-8);
+}
+
+.error {
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--c-danger-subtle);
+  border: 1px solid var(--c-danger);
+  border-radius: var(--r-sm);
+  color: var(--c-danger);
+  font-size: var(--fs-sm);
+}
+
+.footer {
+  margin-top: var(--sp-7);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--c-border);
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.link {
+  color: var(--c-accent);
+  font-weight: var(--fw-medium);
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+/* Only appears when /health says the API is unreachable — the one case where
+   "wrong password" would be a lie. */
+.offline {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-6);
+  color: var(--c-warn);
+  font-size: var(--fs-sm);
+}

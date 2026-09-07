@@ -1,0 +1,91 @@
+/* A menu genuinely floats, so this is one of the few places §8 allows a shadow. */
+
+.content {
+  min-width: 180px;
+  padding: var(--sp-2);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-popover);
+  z-index: var(--z-dropdown);
+  animation: appear var(--dur-fast) var(--ease);
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  /* min-height, not height: the workspace switcher stacks a name over a role line,
+     and a fixed height would spill it past the highlight. */
+  min-height: var(--h-row);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-sm);
+  color: var(--c-text);
+  font-size: var(--fs-md);
+  cursor: pointer;
+  outline: none;
+}
+
+/* Radix drives both hover and keyboard focus through this one attribute, so the
+   pointer and the arrow keys cannot disagree about what is highlighted. */
+.item[data-highlighted] {
+  background: var(--c-surface-hover);
+}
+
+.item[data-disabled] {
+  color: var(--c-text-subtle);
+  pointer-events: none;
+}
+
+.danger[data-highlighted] {
+  background: var(--c-danger-subtle);
+}
+
+.danger {
+  color: var(--c-danger);
+}
+
+.itemIcon {
+  flex: none;
+  color: var(--c-text-subtle);
+}
+
+.danger .itemIcon {
+  color: currentcolor;
+}
+
+/* Pushes a trailing shortcut hint to the right edge of the item. */
+.itemDetail {
+  margin-left: auto;
+  padding-left: var(--sp-6);
+  color: var(--c-text-subtle);
+  font-size: var(--fs-sm);
+}
+
+.check {
+  flex: none;
+  width: 14px;
+  color: var(--c-accent);
+}
+
+.separator {
+  height: 1px;
+  margin: var(--sp-2) calc(-1 * var(--sp-2));
+  background: var(--c-border);
+}
+
+.label {
+  padding: var(--sp-3) var(--sp-4) var(--sp-2);
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}

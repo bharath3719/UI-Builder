@@ -1,0 +1,136 @@
+/* The canvas and its chrome (PLAN.md §5, §8).
+
+   Overlays are `position: fixed` because they are measured in client coordinates —
+   the same space the drop indicator and the drag ghost use — so all three agree
+   without any of them needing to know what they are nested inside. */
+
+.area {
+  position: relative;
+  flex: 1;
+  /* Focused programmatically to own the keyboard, never by tabbing — a focus ring
+     around the whole canvas would be noise, and §8 keeps the canvas undecorated. */
+  outline: none;
+  min-width: 0;
+  background: var(--c-backdrop);
+  /* The artboard is positioned, not laid out: at any zoom it can be larger than this
+     box, and the pan is what decides which part of it shows. */
+  overflow: hidden;
+  /* The backdrop drags the view, and says so before it is pressed. Only the backdrop:
+     the scene puts the cursor back for the design itself, which is pointed at rather
+     than dragged. */
+  cursor: grab;
+}
+
+/* Space held, and the press that would follow it — over the design too, where the
+   pointer would otherwise still look like it was about to select something. */
+.areaPanReady,
+.areaPanReady .scene {
+  cursor: grab;
+}
+
+.areaPanning,
+.areaPanning .scene {
+  cursor: grabbing;
+}
+
+/* The pan/zoom transform (§5.4), applied to one wrapper and nothing else. The origin
+   is the top-left so that the viewport's x/y are simply where the artboard's corner
+   sits — a centred origin would make every conversion depend on the element's size. */
+.scene {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+  /* Undoes the backdrop's `grab` over the design, where the pointer selects. */
+  cursor: default;
+}
+
+/* The artboard is the only lifted surface on screen — a hairline and a white ground
+   against the half-step-darker backdrop, no shadow (§8).
+
+   An outline rather than a border: the frame inside is sized to the artboard exactly,
+   and a border would eat into that box and make the design's width depend on the
+   editor's chrome. Its size comes from ARTBOARD_SIZE, inline. */
+.artboard {
+  position: relative;
+  background: #ffffff;
+  outline: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* The frame must not hit-test while the pointer belongs to the canvas as a whole:
+   mid-drag the drop resolver asks the frame's document directly, and mid-pan the
+   frame's own coordinates travel with the pan. Letting the iframe element take the
+   pointer in either case hands the gesture to a different browsing context. */
+.frameInert {
+  pointer-events: none;
+}
+
+/* --- Selection and hover -------------------------------------------------- */
+
+.hoverOutline,
+.selectionOutline {
+  position: fixed;
+  z-index: var(--z-canvas-overlay);
+  pointer-events: none;
+}
+
+/* Outlines rather than borders, so the chrome never occupies layout space or shifts
+   the thing it is describing by a pixel. */
+.hoverOutline {
+  outline: 1px solid var(--c-accent);
+  outline-offset: -1px;
+  opacity: 0.45;
+}
+
+.selectionOutline {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -1px;
+}
+
+.selectionLabel {
+  position: absolute;
+  left: -1px;
+  bottom: 100%;
+  margin-bottom: 2px;
+  max-width: 240px;
+  padding: 1px var(--sp-3);
+  background: var(--c-accent);
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  color: var(--c-text-on-accent);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The rubber band. A fill as well as an outline, because a band is a region and an
+   outline alone reads as one more selected box among the ones it is drawing over. */
+.marquee {
+  position: fixed;
+  z-index: var(--z-canvas-overlay);
+  pointer-events: none;
+  background: color-mix(in srgb, var(--c-accent) 12%, transparent);
+  outline: 1px solid var(--c-accent);
+  outline-offset: -1px;
+}
+
+/* The root fills the artboard, so a label above it would sit outside the frame. */
+.selectionLabelRoot {
+  bottom: auto;
+  top: 0;
+  margin-bottom: 0;
+  border-radius: 0 0 var(--r-sm) 0;
+  left: 0;
+}

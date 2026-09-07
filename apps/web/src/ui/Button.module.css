@@ -1,0 +1,123 @@
+/* Buttons are the most-repeated control in the studio, so they set the tone: hairline
+   border, 3px radius, one accent reserved for the single primary action on a screen. */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  height: var(--h-control);
+  padding: 0 var(--sp-5);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* --- Variants ------------------------------------------------------------ */
+
+.secondary {
+  background: var(--c-surface);
+  border-color: var(--c-border-strong);
+  color: var(--c-text);
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--c-surface-hover);
+}
+
+.secondary:active:not(:disabled) {
+  background: var(--c-surface-active);
+}
+
+.primary {
+  background: var(--c-accent);
+  color: var(--c-text-on-accent);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--c-accent-hover);
+}
+
+.primary:active:not(:disabled) {
+  background: var(--c-accent-active);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--c-text-muted);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.ghost:active:not(:disabled) {
+  background: var(--c-surface-active);
+}
+
+.danger {
+  background: transparent;
+  border-color: var(--c-border-strong);
+  color: var(--c-danger);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--c-danger-subtle);
+  border-color: var(--c-danger);
+}
+
+/* --- Sizes --------------------------------------------------------------- */
+
+.lg {
+  height: 32px;
+  padding: 0 var(--sp-6);
+}
+
+/* Square, for a lone icon. Always paired with a title/aria-label (§8). */
+.icon {
+  width: var(--h-control);
+  padding: 0;
+}
+
+.icon.lg {
+  width: 32px;
+}
+
+.block {
+  display: flex;
+  width: 100%;
+}
+
+/* Keeps the label from shifting when a spinner replaces it mid-submit. */
+.pending {
+  position: relative;
+  color: transparent;
+}
+
+.pendingSpinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-text-on-accent);
+}
+
+.secondary .pendingSpinner,
+.ghost .pendingSpinner,
+.danger .pendingSpinner {
+  color: var(--c-text-muted);
+}

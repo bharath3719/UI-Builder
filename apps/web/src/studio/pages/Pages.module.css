@@ -1,0 +1,184 @@
+/* The pages list. Rows are full-bleed bands like the layers tree's, so the section
+   around this one is flush and the list owns its own padding. */
+
+.pages {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--sp-2) 0;
+  outline: none;
+}
+
+.list:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--c-focus-ring);
+}
+
+/* --- Rows ----------------------------------------------------------------- */
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--h-layer);
+  padding: 0 var(--sp-3) 0 var(--sp-5);
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  white-space: nowrap;
+  cursor: default;
+  /* A reorder must not paint a text selection across the panel behind it. */
+  user-select: none;
+  touch-action: none;
+}
+
+.row:hover {
+  background: var(--c-surface-hover);
+}
+
+.rowActive {
+  background: var(--c-accent-subtle);
+  color: var(--c-accent);
+}
+
+.rowActive:hover {
+  background: var(--c-accent-subtle);
+}
+
+/* The row is under the pointer now; this is where it came from. */
+.rowDragging {
+  opacity: 0.5;
+}
+
+/* Where the drop would land. Drawn on the row rather than as a floating element so it
+   cannot disagree with the list's own scroll position. */
+.rowInsertBefore::before,
+.rowInsertAfter::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--c-accent);
+  pointer-events: none;
+}
+
+.rowInsertBefore::before {
+  top: -1px;
+}
+
+.rowInsertAfter::after {
+  bottom: -1px;
+}
+
+/* --- Row parts ------------------------------------------------------------- */
+
+.icon {
+  flex: none;
+  color: var(--c-text-muted);
+}
+
+.rowActive .icon {
+  color: inherit;
+}
+
+.name {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowActive .name {
+  font-weight: var(--fw-medium);
+}
+
+/* The route, secondary to the name but always shown: it is what the export and the
+   preview address the page by, and a path is easy to set once and then forget. */
+.path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.rowActive .path {
+  color: inherit;
+  opacity: 0.7;
+}
+
+/* --- Row menu -------------------------------------------------------------- */
+
+/* At rest the row is a name and a path. A column of buttons down every row would
+   out-weigh what it is for (§8: no decoration). */
+.menuButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-left: var(--sp-1);
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--c-text-subtle);
+  cursor: default;
+  opacity: 0;
+}
+
+.row:hover .menuButton,
+.menuButton[data-state='open'] {
+  opacity: 1;
+}
+
+.menuButton:hover,
+.menuButton[data-state='open'] {
+  background: var(--c-surface-active);
+  color: var(--c-text);
+}
+
+/* --- Add ------------------------------------------------------------------- */
+
+/* Pinned under the list rather than in the section header: it is the one thing in this
+   panel that is always available, and a header button would be gone the moment the
+   list scrolled a header out of view in a future layout. */
+.add {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: none;
+  width: 100%;
+  height: var(--h-layer);
+  padding: 0 var(--sp-5);
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--c-border);
+  color: var(--c-text-subtle);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: default;
+}
+
+.add:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.add:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--c-focus-ring);
+}

@@ -1,0 +1,253 @@
+/* The preview screen (PLAN.md §12 Phase 9, §8).
+
+   The chrome here is the studio's, deliberately: the same 40px bar, the same segmented
+   icon group, the same hairlines. A preview that looked like a different application
+   would make the trip back to the editor feel like leaving. */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--c-backdrop);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  height: var(--h-topbar);
+  padding: 0 var(--sp-4);
+  flex: none;
+  background: var(--c-panel);
+  border-bottom: 1px solid var(--c-border);
+  z-index: var(--z-topbar);
+}
+
+.back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--h-control);
+  height: var(--h-control);
+  flex: none;
+  border-radius: var(--r-sm);
+  color: var(--c-text-muted);
+}
+
+.back:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  max-width: 280px;
+}
+
+.name,
+.meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.name {
+  color: var(--c-text);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+}
+
+.meta {
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+}
+
+/* The page name, when there is more than one to choose from. Styled as the text it
+   replaces rather than as a button: it sits in a line of metadata, and a bordered
+   control there would read as the loudest thing in the bar. */
+.pagePicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+}
+
+.pagePicker:hover {
+  color: var(--c-text);
+}
+
+.pagePicker:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* The route, so two similarly named pages are still tellable apart in the menu. */
+.pagePickerPath {
+  margin-left: var(--sp-4);
+  color: var(--c-text-subtle);
+}
+
+.spacer {
+  flex: 1;
+  min-width: var(--sp-4);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex: none;
+}
+
+.divider {
+  width: 1px;
+  height: 16px;
+  flex: none;
+  background: var(--c-border-strong);
+}
+
+/* --- Device switcher ------------------------------------------------------ */
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+}
+
+.tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm);
+  color: var(--c-text-muted);
+}
+
+.tool:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.toolActive,
+.toolActive:hover {
+  background: var(--c-accent-subtle);
+  color: var(--c-accent);
+}
+
+/* Tabular numerals so the row does not twitch as the size changes with the window. */
+.size {
+  min-width: 76px;
+  color: var(--c-text-subtle);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* --- The design ----------------------------------------------------------- */
+
+/* Centred horizontally, pinned to the top vertically: a page is read from its top edge,
+   and a short design floating in the middle of the area reads as a card rather than as a
+   page. `overflow: auto` is for the case where a preset is taller than the window. */
+.stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--sp-6);
+  overflow: auto;
+}
+
+/* A hairline and a small radius, the same lifted-surface treatment as the artboard. */
+.device {
+  flex: none;
+  max-width: 100%;
+  background: var(--c-surface);
+  outline: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+/* Filling the area means there is no surface to lift — the design *is* the page. */
+.deviceFit {
+  flex: 1;
+  align-self: stretch;
+  width: 100%;
+  outline: none;
+  border-radius: 0;
+}
+
+.stageBare {
+  padding: 0;
+}
+
+.frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* --- Share ---------------------------------------------------------------- */
+
+.shareRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.link {
+  flex: 1;
+  min-width: 0;
+  height: var(--h-control);
+  padding: 0 var(--sp-4);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  color: var(--c-text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+.link:focus-visible {
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px var(--c-focus-ring);
+  outline: none;
+}
+
+.note {
+  margin: var(--sp-5) 0 0;
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}
+
+/* State, not decoration: the link is serving something other than what is on screen. */
+.stale {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin-top: var(--sp-5);
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--c-warn-subtle);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>UI Builder</title>
+    <script>
+      // Stamp the stored theme before first paint so the studio never flashes the
+      // wrong palette. tokens.css handles all three states on its own, so this is
+      // an enhancement, not a requirement.
+      try {
+        var t = localStorage.getItem('ui-builder.theme');
+        if (t === 'light' || t === 'dark') {
+          document.documentElement.setAttribute('data-theme', t);
+        }
+      } catch (_) {
+        /* private mode — fall back to the CSS media query */
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

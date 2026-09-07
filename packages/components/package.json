@@ -1,0 +1,28 @@
+{
+  "name": "@ui-builder/components",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The built-in component library and its registry. One spec per component feeds the palette, the inspector, the renderer and codegen; '.' is the spec data, './react' the implementations.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./react": "./src/react/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ui-builder/schema": "*",
+    "lucide-react": "^1.41.0"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "react-dom": "^19.2.8"
+  }
+}

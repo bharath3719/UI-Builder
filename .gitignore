@@ -1,0 +1,27 @@
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# env — .env.example is committed, real .env files are not
+.env
+.env.*
+!.env.example
+
+# generated
+apps/api/src/generated/
+playwright-report/
+test-results/
+
+# editors / os
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# logs
+*.log
+npm-debug.log*

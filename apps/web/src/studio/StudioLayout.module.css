@@ -1,0 +1,167 @@
+/* The three-pane editor frame. Panels are fixed-width columns; only the canvas
+   between them takes the remaining space, so resizing a panel never reflows the
+   others (PLAN.md §5). */
+
+.studio {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--c-backdrop);
+  overflow: hidden;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-width: 0;
+  background: var(--c-panel);
+  overflow: hidden;
+}
+
+.panelLeft {
+  border-right: 1px solid var(--c-border);
+}
+
+.panelRight {
+  border-left: 1px solid var(--c-border);
+}
+
+/* --- Separators ---------------------------------------------------------- */
+
+/* A hairline to look at, a 9px band to hit. The band is negatively margined so it
+   overlaps its neighbours instead of taking layout space of its own. */
+.separator {
+  flex: none;
+  position: relative;
+  z-index: var(--z-panel);
+  background: transparent;
+}
+
+.separatorVertical {
+  width: 9px;
+  margin: 0 -4px;
+  cursor: col-resize;
+}
+
+.separatorHorizontal {
+  height: 9px;
+  margin: -4px 0;
+  cursor: row-resize;
+}
+
+/* The visible line only appears on hover, drag or focus — at rest the panel border
+   is the boundary and a second line would just be heavier. */
+.separator::after {
+  content: '';
+  position: absolute;
+  background: var(--c-accent);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.separatorVertical::after {
+  inset: 0 4px;
+}
+
+.separatorHorizontal::after {
+  inset: 4px 0;
+}
+
+.separator:hover::after,
+.separator:focus-visible::after,
+.separatorActive::after {
+  opacity: 1;
+}
+
+.separator:focus-visible {
+  outline: none;
+}
+
+/* --- Panel sections ------------------------------------------------------ */
+
+/* Sections fill the panel: the rail shows one at a time, so there is nothing to
+   share the column with. */
+.section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* `display: flex` above outranks the browser's own rule for the attribute, so the
+   rail's hidden views need this to actually be hidden. */
+.section[hidden] {
+  display: none;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  height: var(--h-tab);
+  padding: 0 var(--sp-5);
+  flex: none;
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.sectionBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--sp-5);
+}
+
+/* Content that scrolls itself and bleeds to the panel edges — the layers tree. The
+   scrolling has to move with the padding, or the rows would scroll inside a box that
+   is inset from the panel and the drop resolver's bounds would be the wrong element. */
+.sectionBodyFlush {
+  overflow: hidden;
+  padding: 0;
+}
+
+/* Panels that hold nothing yet. Muted grey, one line, no illustration (§8). */
+.placeholder {
+  color: var(--c-text-subtle);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}
+
+/* --- Canvas area --------------------------------------------------------- */
+
+.canvasArea {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--c-backdrop);
+  overflow: hidden;
+}
+
+/* Stands in for the iframe host until Phase 4. Sized like an artboard so the frame
+   is judged at the proportions it will actually have. */
+.artboard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(900px, calc(100% - var(--sp-9)));
+  height: min(620px, calc(100% - var(--sp-9)));
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  color: var(--c-text-subtle);
+  font-size: var(--fs-sm);
+}

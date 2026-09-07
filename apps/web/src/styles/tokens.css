@@ -1,0 +1,200 @@
+/* ==========================================================================
+   Studio design tokens — PLAN.md §8, decision D12.
+
+   The canvas is the only saturated thing on screen. Everything here is a neutral
+   grey with a faint cool bias, plus exactly one accent used for selection, focus,
+   active tabs and primary actions. Semantic colours (danger/warn/ok) are separate
+   from the accent and only ever encode state, never decoration.
+
+   Theming has three states:
+     - bare :root                      light (also the no-preference default)
+     - prefers-color-scheme: dark      dark, unless the user explicitly chose light
+     - [data-theme="dark"|"light"]     explicit choice always wins
+
+   The dark palette is written twice on purpose so the studio renders correctly
+   with JavaScript disabled or before the theme script runs. Only token values are
+   redefined; no component ever declares a colour inside a theme block.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* --- Surfaces --------------------------------------------------------- */
+  /* Backdrop is the darkest step so the artboard reads as a lifted surface. */
+  --c-backdrop: #e8eaec;
+  --c-panel: #f7f8f9;
+  --c-surface: #ffffff;
+  --c-surface-hover: #f0f1f3;
+  --c-surface-active: #e7e9ec;
+  --c-overlay-scrim: rgb(16 20 24 / 0.32);
+
+  /* --- Hairlines (§8: borders, not shadows) ------------------------------ */
+  --c-border: #e3e5e8;
+  --c-border-strong: #cfd3d8;
+
+  /* --- Text -------------------------------------------------------------- */
+  --c-text: #15181b;
+  --c-text-muted: #5b6268;
+  --c-text-subtle: #8b9198;
+  --c-text-on-accent: #ffffff;
+
+  /* --- The one accent ---------------------------------------------------- */
+  --c-accent: #2c6be8;
+  --c-accent-hover: #2159c9;
+  --c-accent-active: #1b4cae;
+  --c-accent-subtle: #edf2fd;
+  --c-accent-border: #b9cff7;
+  --c-focus-ring: rgb(44 107 232 / 0.32);
+
+  /* --- Semantic state ---------------------------------------------------- */
+  --c-danger: #ce3b32;
+  --c-danger-subtle: #fceceb;
+  --c-warn: #a96a11;
+  --c-warn-subtle: #fdf4e7;
+  --c-ok: #2c7a52;
+  --c-ok-subtle: #eaf5ef;
+
+  /* --- Elevation (only things that genuinely float) ---------------------- */
+  --shadow-popover: 0 6px 16px -4px rgb(16 20 24 / 0.16), 0 2px 4px -2px rgb(16 20 24 / 0.08);
+  --shadow-drag: 0 10px 24px -6px rgb(16 20 24 / 0.24);
+
+  /* --- Space (4px base) -------------------------------------------------- */
+  --sp-1: 2px;
+  --sp-2: 4px;
+  --sp-3: 6px;
+  --sp-4: 8px;
+  --sp-5: 12px;
+  --sp-6: 16px;
+  --sp-7: 20px;
+  --sp-8: 24px;
+  --sp-9: 32px;
+
+  /* --- Radii (§8: 3–4px; nothing pill-shaped, nothing 12px+) ------------- */
+  --r-sm: 3px;
+  --r-md: 4px;
+  --r-lg: 6px; /* popovers and floating panels only */
+  --r-circle: 50%; /* avatars and status dots */
+
+  /* --- Type -------------------------------------------------------------- */
+  --font-ui:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    ui-monospace, 'SF Mono', 'Cascadia Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  --fs-xs: 11px; /* uppercase section labels, badges */
+  --fs-sm: 12px; /* inspector labels, layer rows */
+  --fs-md: 13px; /* default UI text */
+  --fs-lg: 14px; /* panel and dialog titles */
+  --fs-xl: 16px;
+
+  --lh-tight: 1.2;
+  --lh-normal: 1.45;
+
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  --ls-label: 0.04em; /* uppercase micro-labels only */
+
+  /* --- Control metrics (§8: dense but not cramped) ----------------------- */
+  --h-topbar: 40px;
+  --h-control: 26px; /* inputs, buttons, selects */
+  --h-row: 28px; /* inspector field row */
+  --h-layer: 24px; /* layers tree row */
+  --h-tab: 32px;
+
+  --w-panel-left: 264px;
+  --w-panel-right: 280px;
+  --w-panel-min: 200px;
+  --w-panel-max: 420px;
+
+  /* --- Motion (§8: functional only) -------------------------------------- */
+  --dur-fast: 120ms;
+  --dur: 150ms;
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+
+  /* --- Stacking ---------------------------------------------------------- */
+  --z-canvas: 0;
+  --z-canvas-overlay: 10;
+  --z-panel: 20;
+  --z-topbar: 30;
+  --z-dropdown: 100;
+  --z-drag: 200;
+  --z-toast: 300;
+}
+
+/* System dark, unless the user explicitly asked for light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --c-backdrop: #121415;
+    --c-panel: #1a1d1f;
+    --c-surface: #212528;
+    --c-surface-hover: #282c30;
+    --c-surface-active: #30353a;
+    --c-overlay-scrim: rgb(0 0 0 / 0.55);
+
+    --c-border: #2c3134;
+    --c-border-strong: #3d4348;
+
+    --c-text: #e8eaec;
+    --c-text-muted: #a0a7ad;
+    --c-text-subtle: #757c83;
+    --c-text-on-accent: #ffffff;
+
+    --c-accent: #4b86f0;
+    --c-accent-hover: #669af5;
+    --c-accent-active: #7facf8;
+    --c-accent-subtle: #1a2740;
+    --c-accent-border: #2e4e80;
+    --c-focus-ring: rgb(75 134 240 / 0.36);
+
+    --c-danger: #e8635a;
+    --c-danger-subtle: #2e1d1c;
+    --c-warn: #d69b4a;
+    --c-warn-subtle: #2c2318;
+    --c-ok: #4fa97a;
+    --c-ok-subtle: #17281f;
+
+    --shadow-popover: 0 6px 16px -4px rgb(0 0 0 / 0.44), 0 2px 4px -2px rgb(0 0 0 / 0.32);
+    --shadow-drag: 0 10px 24px -6px rgb(0 0 0 / 0.56);
+  }
+}
+
+/* Explicit dark choice — same values, so a toggle wins in both directions. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --c-backdrop: #121415;
+  --c-panel: #1a1d1f;
+  --c-surface: #212528;
+  --c-surface-hover: #282c30;
+  --c-surface-active: #30353a;
+  --c-overlay-scrim: rgb(0 0 0 / 0.55);
+
+  --c-border: #2c3134;
+  --c-border-strong: #3d4348;
+
+  --c-text: #e8eaec;
+  --c-text-muted: #a0a7ad;
+  --c-text-subtle: #757c83;
+  --c-text-on-accent: #ffffff;
+
+  --c-accent: #4b86f0;
+  --c-accent-hover: #669af5;
+  --c-accent-active: #7facf8;
+  --c-accent-subtle: #1a2740;
+  --c-accent-border: #2e4e80;
+  --c-focus-ring: rgb(75 134 240 / 0.36);
+
+  --c-danger: #e8635a;
+  --c-danger-subtle: #2e1d1c;
+  --c-warn: #d69b4a;
+  --c-warn-subtle: #2c2318;
+  --c-ok: #4fa97a;
+  --c-ok-subtle: #17281f;
+
+  --shadow-popover: 0 6px 16px -4px rgb(0 0 0 / 0.44), 0 2px 4px -2px rgb(0 0 0 / 0.32);
+  --shadow-drag: 0 10px 24px -6px rgb(0 0 0 / 0.56);
+}

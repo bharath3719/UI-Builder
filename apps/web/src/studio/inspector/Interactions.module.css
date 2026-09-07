@@ -1,0 +1,198 @@
+/**
+ * The Interactions tab — PLAN.md §8.
+ *
+ * A step is a small card rather than a row: it holds two or three controls and a
+ * toolbar, and the 28px field row the rest of the inspector is built from cannot carry
+ * that without wrapping into something harder to read than a border.
+ */
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+}
+
+.stepHead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.stepIndex {
+  flex: none;
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.kind {
+  flex: 1;
+  min-width: 0;
+  height: var(--h-control);
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+}
+
+.kind:focus-visible {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-focus-ring);
+}
+
+.stepTools {
+  display: flex;
+  flex: none;
+  gap: var(--sp-1);
+}
+
+.tool {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--c-text-muted);
+  cursor: pointer;
+}
+
+.tool:hover:not(:disabled) {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.tool:disabled {
+  color: var(--c-text-subtle);
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tool:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--c-focus-ring);
+}
+
+.stepBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.fieldLabel {
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-label);
+}
+
+.select {
+  width: 100%;
+  height: var(--h-control);
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+}
+
+.select:focus-visible {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-focus-ring);
+}
+
+.code {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  resize: vertical;
+}
+
+.code:focus {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-focus-ring);
+}
+
+.add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--h-control);
+  padding: 0 var(--sp-3);
+  border: 1px dashed var(--c-border-strong);
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--c-text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.add:hover:not(:disabled) {
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+}
+
+.add:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.add:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--c-focus-ring);
+}
+
+.empty {
+  margin: 0 0 var(--sp-3);
+  color: var(--c-text-subtle);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}
+
+.hint {
+  margin: 0;
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+}
+
+.hint code {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--c-text-muted);
+}

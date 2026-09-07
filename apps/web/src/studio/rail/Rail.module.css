@@ -1,0 +1,62 @@
+/* A fixed column of icon buttons. Narrow enough that it reads as chrome rather than
+   as a fourth panel, and never resizable — its width is not a preference. */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  gap: var(--sp-1);
+  width: 44px;
+  padding: var(--sp-3) 0;
+  background: var(--c-panel);
+  border-right: 1px solid var(--c-border);
+}
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 34px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--c-text-subtle);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.item:hover {
+  color: var(--c-text);
+  background: var(--c-surface-hover);
+}
+
+.item:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px;
+}
+
+.itemActive {
+  color: var(--c-accent);
+}
+
+.itemActive:hover {
+  color: var(--c-accent);
+}
+
+/* The marker is a bar on the panel's edge rather than a filled button, so the rail
+   stays quiet: at any moment two of the three are off, and a filled pill would make
+   the strip the loudest thing on screen next to a design (§8). */
+.itemActive::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--c-accent);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}

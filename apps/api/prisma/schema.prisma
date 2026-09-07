@@ -1,0 +1,158 @@
+// UI Builder — database schema (PLAN.md §4).
+// The connection URL lives in prisma7.config.ts (Prisma 7 moved it out of this file).
+//
+// Phase 1 exercises User / Workspace / WorkspaceMember / Project / RefreshToken.
+// ProjectRevision, Asset and Publish are declared here too so the history, upload
+// and publish phases do not each need their own migration — the shapes are already
+// settled in the plan.
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Ordered most- to least-privileged. `roleRank` in src/lib/roles.ts is the single
+/// place that ordering is encoded — keep the two in step.
+enum Role {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+model User {
+  id           String   @id @default(cuid(2))
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships   WorkspaceMember[]
+  refreshTokens RefreshToken[]
+  revisions     ProjectRevision[]
+}
+
+model Workspace {
+  id        String   @id @default(cuid(2))
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members  WorkspaceMember[]
+  projects Project[]
+}
+
+model WorkspaceMember {
+  id          String   @id @default(cuid(2))
+  userId      String
+  workspaceId String
+  role        Role
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+model Project {
+  id           String  @id @default(cuid(2))
+  workspaceId  String
+  name         String
+  slug         String
+  thumbnailUrl String?
+
+  /// D10 optimistic lock. Bumped on every accepted document write (Phase 8);
+  /// a project with no saved document yet sits at 0.
+  version Int @default(0)
+
+  /// Set once the project has a saved document (Phase 3+). Null until then.
+  currentRevisionId String? @unique
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  archivedAt DateTime?
+
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  currentRevision ProjectRevision? @relation("CurrentRevision", fields: [currentRevisionId], references: [id], onDelete: SetNull)
+  revisions       ProjectRevision[] @relation("ProjectRevisions")
+  assets          Asset[]
+  publishes       Publish[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+}
+
+/// Immutable history. Written on a throttle during autosave plus on every explicit
+/// "Save version" (PLAN.md §4).
+model ProjectRevision {
+  id        String   @id @default(cuid(2))
+  projectId String
+  doc       Json
+  version   Int
+  label     String?
+  authorId  String?
+  createdAt DateTime @default(now())
+
+  project Project @relation("ProjectRevisions", fields: [projectId], references: [id], onDelete: Cascade)
+  author  User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  currentOf Project?  @relation("CurrentRevision")
+  publishes Publish[]
+
+  @@index([projectId, version])
+}
+
+model Asset {
+  id        String   @id @default(cuid(2))
+  projectId String
+  url       String
+  mimeType  String
+  width     Int?
+  height    Int?
+  bytes     Int
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid(2))
+  userId    String
+  /// SHA-256 of the token. The token itself is only ever in the client's cookie,
+  /// so a database leak does not hand over live sessions.
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Publish {
+  id          String   @id @default(cuid(2))
+  projectId   String
+  revisionId  String
+  slug        String   @unique
+  publishedAt DateTime @default(now())
+
+  project  Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  revision ProjectRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}

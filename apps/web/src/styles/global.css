@@ -1,0 +1,104 @@
+@import './tokens.css';
+
+/* ==========================================================================
+   Global reset and base. Studio chrome only — this stylesheet must never leak
+   into the canvas iframe, which loads its own document (PLAN.md §5, D2).
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--c-panel);
+  color: var(--c-text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* The studio is a fixed-viewport application; only individual panels scroll. */
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+  border-radius: var(--r-sm);
+}
+
+/* Tool chrome should not be selectable; text the user authors is opted back in. */
+body {
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable='true'],
+[data-selectable] {
+  user-select: text;
+}
+
+/* Quiet, thin scrollbars so panels do not gain a heavy edge. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--c-border-strong);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--r-lg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

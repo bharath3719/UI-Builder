@@ -1,0 +1,166 @@
+/* The code panel — a wide, mostly-full-height modal rather than the studio's usual short
+   form, because the thing being shown is a file and a file is tall. It borrows the
+   dialog's scrim and elevation but not its 420px body. */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--c-overlay-scrim);
+  z-index: var(--z-dropdown);
+  animation: fade var(--dur) var(--ease);
+}
+
+.content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  width: min(1080px, calc(100vw - var(--sp-9)));
+  height: min(760px, calc(100vh - var(--sp-9)));
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-popover);
+  z-index: var(--z-dropdown);
+  animation: rise var(--dur) var(--ease);
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 4px));
+  }
+}
+
+.header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-5) var(--sp-6);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.title {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+}
+
+.subtitle {
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* Something in the document did not survive generation. Warn, not danger: the export is
+   valid and usable, it is simply missing a node the library no longer has. */
+.warnings {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-6);
+  background: var(--c-warn-subtle);
+  border-bottom: 1px solid var(--c-border);
+  color: var(--c-warn);
+  font-size: var(--fs-sm);
+}
+
+.split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.files {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: var(--w-panel-left);
+  padding: var(--sp-3);
+  overflow-y: auto;
+  background: var(--c-panel);
+  border-right: 1px solid var(--c-border);
+}
+
+.file {
+  padding: var(--sp-2) var(--sp-4);
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--c-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: var(--h-layer);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.file:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.file[data-selected] {
+  background: var(--c-accent-subtle);
+  color: var(--c-accent);
+  font-weight: var(--fw-medium);
+}
+
+.pane {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+
+/* One scroll container for the gutter and the source, so a line number can never drift
+   away from its line. The gutter sticks during horizontal scroll instead of leaving. */
+.code {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  min-height: 0;
+  overflow: auto;
+}
+
+.gutter {
+  position: sticky;
+  left: 0;
+  padding: var(--sp-5) var(--sp-4) var(--sp-5) var(--sp-6);
+  background: var(--c-surface);
+  color: var(--c-text-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  text-align: right;
+  user-select: none;
+}
+
+.source {
+  padding: var(--sp-5) var(--sp-6) var(--sp-5) 0;
+  color: var(--c-text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  tab-size: 2;
+}
+
+.empty {
+  padding: var(--sp-6);
+  color: var(--c-text-muted);
+  font-size: var(--fs-md);
+}

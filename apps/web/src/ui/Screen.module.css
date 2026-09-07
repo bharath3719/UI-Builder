@@ -1,0 +1,33 @@
+/* Whole-viewport states: restoring a session, a route that failed to load, a 404. */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-5);
+  height: 100%;
+  padding: var(--sp-9);
+  background: var(--c-backdrop);
+  text-align: center;
+}
+
+.spinner {
+  color: var(--c-text-subtle);
+}
+
+.title {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+}
+
+.message {
+  max-width: 44ch;
+  color: var(--c-text-muted);
+}
+
+.actions {
+  display: flex;
+  gap: var(--sp-4);
+  margin-top: var(--sp-2);
+}

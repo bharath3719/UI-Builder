@@ -1,0 +1,44 @@
+{
+  "name": "ui-builder",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A visual UI builder — workspaces, drag-and-drop canvas, live preview, React code export.",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,magenta --kill-others \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @ui-builder/api",
+    "dev:web": "npm run dev -w @ui-builder/web",
+    "build": "npm run build --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,css,html,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,css,html,md}\"",
+    "db:create": "npm run db:create -w @ui-builder/api",
+    "db:generate": "npm run db:generate -w @ui-builder/api",
+    "db:migrate": "npm run db:migrate -w @ui-builder/api",
+    "db:studio": "npm run db:studio -w @ui-builder/api"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.4.1",
+    "concurrently": "^10.0.5",
+    "eslint": "^10.9.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.6",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.69.0",
+    "vitest": "^4.1.11"
+  }
+}

@@ -1,0 +1,140 @@
+.trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm);
+  color: var(--c-text-muted);
+}
+
+.trigger:hover,
+.trigger[data-state='open'] {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+/* Wider than a command menu because every row carries a timestamp and an author. */
+.panel {
+  width: 300px;
+}
+
+.header {
+  padding: var(--sp-3) var(--sp-4) var(--sp-2);
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* The list scrolls; the header and "Save version…" stay put. Fifty revisions is the
+   API's cap, and a menu that tall would run off the screen. */
+.list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: var(--sp-1) 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.row:hover {
+  background: var(--c-surface-hover);
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.rowTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  flex: none;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--c-accent-subtle);
+  color: var(--c-accent);
+  font-size: var(--fs-xs);
+}
+
+.rowMeta {
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Only on hover and focus: a Restore button on every row turns a list you are reading
+   into a wall of destructive-looking actions. */
+.restore {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: none;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+  opacity: 0;
+}
+
+.row:hover .restore,
+.restore:focus-visible {
+  opacity: 1;
+}
+
+.restore:hover {
+  background: var(--c-surface-active);
+  color: var(--c-text);
+}
+
+.empty {
+  padding: var(--sp-4);
+  color: var(--c-text-subtle);
+  font-size: var(--fs-sm);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.fieldLabel {
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.input {
+  height: var(--h-control);
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-size: var(--fs-md);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -1px;
+}

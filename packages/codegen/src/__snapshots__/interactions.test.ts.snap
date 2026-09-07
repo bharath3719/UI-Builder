@@ -1,0 +1,103 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the interactive project > is this page 1`] = `
+"import { useState, type ChangeEvent } from 'react';
+import { list, pick, text, truthy } from '../lib/values';
+import { useQuery } from '../lib/query';
+import { useGoTo } from '../lib/navigate';
+import { Toasts, useToasts } from '../lib/toast';
+
+import styles from './Home.module.css';
+
+export function Home() {
+  const [state, setState] = useState<Record<string, any>>({ count: 0, search: '', busy: false });
+
+  const queries = {
+    people: useQuery({
+      method: 'GET',
+      url: \`https://example.com/api/people?q=\${text(state.search)}\`,
+      headers: { Accept: 'application/json' },
+      runOnLoad: true,
+    }),
+    save: useQuery({
+      method: 'POST',
+      url: 'https://example.com/api/visits',
+      body: \`{"seen": \${text(state.count)}}\`,
+      runOnLoad: false,
+    }),
+  };
+
+  const { toasts, showToast } = useToasts();
+
+  const goTo = useGoTo();
+
+  const onSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setState((current) => ({ ...current, search: event.target.value }));
+  };
+
+  const onCountUpClick = async () => {
+    setState((current) => ({ ...current, count: state.count + 1 }));
+    setState((current) => ({ ...current, busy: !truthy(current.busy) }));
+    await queries.save.run();
+    showToast(\`Counted to \${text(state.count + 1)}\`);
+  };
+
+  return (
+    <>
+      <div
+        className={\`ub-stack \${styles['ub-n-root']}\`}
+        data-direction="vertical"
+        data-gap="4"
+        data-align="stretch"
+        data-justify="start"
+      >
+        <h1 className="ub-heading" data-level="1">{\`Seen \${text(state.count)} times\`}</h1>
+        <input
+          className="ub-input"
+          type="text"
+          placeholder="Search people"
+          data-disabled={truthy(state.busy) ? '' : undefined}
+          disabled={truthy(state.busy)}
+          onChange={onSearchChange}
+        />
+        <button
+          className="ub-button"
+          type="button"
+          data-variant={pick(state.busy ? 'secondary' : 'default', ['default', 'secondary', 'outline', 'ghost', 'destructive', 'link'], 'default')}
+          data-size="lg"
+          onClick={onCountUpClick}
+        >
+          Count up
+        </button>
+        {truthy(!queries.people.data) && (
+          <p className="ub-text" data-size="base" data-tone="muted">No people yet.</p>
+        )}
+        {list(queries.people.data).map((item, index) => {
+          const onOpenClick = () => {
+            goTo(\`/people/\${text(item.id)}\`);
+          };
+
+          return (
+            <div key={index} className="ub-card">
+              <p className="ub-text" data-size="base" data-tone="default">
+                {text(item.name, 'Text')}
+              </p>
+              <button
+                className="ub-button"
+                type="button"
+                data-variant="outline"
+                data-size="default"
+                onClick={onOpenClick}
+              >
+                Open
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <Toasts toasts={toasts} />
+    </>
+  );
+}
+"
+`;

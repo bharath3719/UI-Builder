@@ -1,0 +1,133 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  height: var(--h-topbar);
+  padding: 0 var(--sp-5);
+  background: var(--c-panel);
+  border-bottom: 1px solid var(--c-border);
+  flex: none;
+  z-index: var(--z-topbar);
+}
+
+.wordmark {
+  color: var(--c-text);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* Pushes everything after it to the right edge. */
+.spacer {
+  flex: 1;
+  min-width: var(--sp-4);
+}
+
+.divider {
+  width: 1px;
+  height: 16px;
+  background: var(--c-border-strong);
+  flex: none;
+}
+
+/* --- Switcher trigger ---------------------------------------------------- */
+
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  max-width: 260px;
+  height: var(--h-control);
+  padding: 0 var(--sp-3);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--c-text);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+}
+
+.trigger:hover,
+.trigger[data-state='open'] {
+  background: var(--c-surface-hover);
+}
+
+.triggerLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: none;
+  color: var(--c-text-subtle);
+}
+
+/* --- Menu internals ------------------------------------------------------ */
+
+.workspaceRow {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.workspaceName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspaceMeta {
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+}
+
+/* --- User menu ----------------------------------------------------------- */
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--h-control);
+  height: var(--h-control);
+  background: var(--c-surface-active);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-circle);
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.01em;
+}
+
+.avatar:hover,
+.avatar[data-state='open'] {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  max-width: 240px;
+}
+
+.identityName {
+  color: var(--c-text);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identityEmail {
+  color: var(--c-text-subtle);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

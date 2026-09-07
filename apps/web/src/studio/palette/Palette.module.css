@@ -1,0 +1,142 @@
+/* The component library (PLAN.md §7, §8: dense but not cramped, icons with words
+   where precision matters). */
+
+.palette {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+/* --- Search --------------------------------------------------------------- */
+
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.searchIcon {
+  position: absolute;
+  left: var(--sp-4);
+  color: var(--c-text-subtle);
+  pointer-events: none;
+}
+
+.searchInput {
+  width: 100%;
+  height: var(--h-control);
+  padding: 0 var(--sp-4) 0 26px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  color: var(--c-text);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+}
+
+.searchInput::placeholder {
+  color: var(--c-text-subtle);
+}
+
+.searchInput:focus-visible {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px var(--c-focus-ring);
+}
+
+/* The type=search clear affordance is a second, differently-styled control we do not
+   want; Escape already clears the field. */
+.searchInput::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+/* --- Groups --------------------------------------------------------------- */
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.groupTitle {
+  margin: 0;
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+/* One column. Two fit more on screen, but at a 264px panel "Horizontal Stack" then
+   truncates — and the palette is how someone finds a component they cannot yet name,
+   so the full name is the one thing that must not be sacrificed for density. */
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* --- Items ---------------------------------------------------------------- */
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  height: var(--h-row);
+  padding: 0 var(--sp-3);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  color: var(--c-text);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: grab;
+  /* A drag that selects the label text underneath it looks broken. */
+  user-select: none;
+  touch-action: none;
+}
+
+.item:hover {
+  background: var(--c-surface-hover);
+  border-color: var(--c-border);
+}
+
+.item:active {
+  cursor: grabbing;
+  background: var(--c-surface-active);
+}
+
+.item:focus-visible {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px var(--c-focus-ring);
+}
+
+.itemIcon {
+  flex: none;
+  color: var(--c-text-muted);
+}
+
+.itemName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Zero results ---------------------------------------------------------- */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.emptyText {
+  margin: 0;
+  color: var(--c-text-subtle);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}

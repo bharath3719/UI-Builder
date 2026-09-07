@@ -1,0 +1,114 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`a document with components > a component that places another component 1`] = `
+"import { cx, pick, text } from '../lib/values';
+
+export interface StatusBadgeProps {
+  label?: string;
+  tone?: string;
+  /** The one placement’s own styling, from whichever page or component placed it. */
+  className?: string;
+}
+
+export function StatusBadge({ label = 'Draft', tone = 'default', className }: StatusBadgeProps) {
+  const props = { label, tone };
+
+  return (
+    <span
+      className={cx('ub-badge', className)}
+      data-variant={pick(props.tone, ['default', 'secondary', 'outline', 'destructive'], 'default')}
+    >
+      {text(props.label, 'Badge')}
+    </span>
+  );
+}
+"
+`;
+
+exports[`a document with components > the component someone reads 1`] = `
+"import { cx, text, truthy } from '../lib/values';
+import { StatusBadge } from './StatusBadge';
+
+import styles from './ProductCard.module.css';
+
+export interface ProductCardProps {
+  title?: string;
+  price?: number;
+  featured?: boolean;
+  status?: string;
+  /** The one placement’s own styling, from whichever page or component placed it. */
+  className?: string;
+}
+
+export function ProductCard({
+  title = 'Untitled',
+  price = 0,
+  featured = false,
+  status = 'Draft',
+  className,
+}: ProductCardProps) {
+  const props = { title, price, featured, status };
+
+  return (
+    <div className={cx('ub-card', styles['ub-n-card-root'], className)}>
+      <h3 className="ub-heading" data-level="3">{text(props.title, 'Heading')}</h3>
+      {truthy(props.featured) && (
+        <p className="ub-text" data-size="base" data-tone="default">
+          {\`From \${text(props.price)} a month\`}
+        </p>
+      )}
+      <StatusBadge label={text(props.status, 'Draft')} tone="success" />
+    </div>
+  );
+}
+"
+`;
+
+exports[`a document with components > the page that places them 1`] = `
+"import { useState } from 'react';
+import { list, num, text, truthy } from '../lib/values';
+import { useQuery } from '../lib/query';
+import { ProductCard } from '../components/ProductCard';
+
+import styles from './Home.module.css';
+
+export function Home() {
+  const [state] = useState<Record<string, any>>({ all: false });
+
+  const queries = {
+    products: useQuery({
+      method: 'GET',
+      url: 'https://example.test/products',
+      runOnLoad: true,
+    }),
+  };
+
+  return (
+    <div
+      className={\`ub-stack \${styles['ub-n-root']}\`}
+      data-direction="vertical"
+      data-gap="4"
+      data-align="stretch"
+      data-justify="start"
+    >
+      <ProductCard
+        className={styles['ub-n-one']}
+        title="Aurora"
+        price={24}
+        featured
+        status="Live"
+      />
+      <ProductCard />
+      {list(queries.products.data).map((item, index) => (
+        <ProductCard
+          key={index}
+          title={text(item.name, 'Untitled')}
+          price={num(item.price, 0, { round: false })}
+          featured={truthy(state.all)}
+        />
+      ))}
+    </div>
+  );
+}
+"
+`;

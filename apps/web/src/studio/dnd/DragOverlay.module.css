@@ -1,0 +1,78 @@
+/* Drag feedback (PLAN.md §6, §8: motion is functional only — none of this animates,
+   it just tracks the pointer). */
+
+.layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-drag);
+  pointer-events: none;
+}
+
+/* The 2px insertion line from §6. Endcaps make a line between two flush elements
+   readable as a gap rather than as an underline on the one above it. */
+.line {
+  position: fixed;
+  background: var(--c-accent);
+  border-radius: 1px;
+  box-shadow:
+    0 0 0 1px var(--c-accent),
+    0 0 0 3px color-mix(in srgb, var(--c-accent) 25%, transparent);
+}
+
+/* Empty containers get an area, not a line — "inside here" is a different statement
+   from "between these two". */
+.box {
+  position: fixed;
+  border: 2px solid var(--c-accent);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--c-accent) 8%, transparent);
+}
+
+/* The container the drop lands in. Weaker than either indicator on purpose — it is
+   the backdrop the line is being read against, not the answer itself. */
+.container {
+  position: fixed;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--c-accent) 5%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--c-accent) 40%, transparent);
+  outline-offset: -1px;
+}
+
+/* "after Card" — the neighbour the line is drawn against, named, because a gap between
+   two flush elements looks identical from either side of it. */
+.tag {
+  position: fixed;
+  max-width: 220px;
+  padding: 1px var(--sp-3);
+  background: var(--c-accent);
+  border-radius: var(--r-sm);
+  color: var(--c-text-on-accent);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ghost {
+  position: fixed;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  height: var(--h-control);
+  padding: 0 var(--sp-5);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-drag);
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+
+.ghostBlocked {
+  color: var(--c-text-subtle);
+  font-weight: var(--fw-normal);
+}

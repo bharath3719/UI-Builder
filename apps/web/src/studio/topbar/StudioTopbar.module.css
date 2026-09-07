@@ -1,0 +1,137 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  height: var(--h-topbar);
+  padding: 0 var(--sp-4);
+  flex: none;
+  background: var(--c-panel);
+  border-bottom: 1px solid var(--c-border);
+  z-index: var(--z-topbar);
+}
+
+/* Back to the workspace. An icon with a tooltip, because the label would be the
+   longest word in a row that has real work to do (§8). */
+.back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--h-control);
+  height: var(--h-control);
+  flex: none;
+  border-radius: var(--r-sm);
+  color: var(--c-text-muted);
+}
+
+.back:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  max-width: 280px;
+}
+
+.name {
+  color: var(--c-text);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spacer {
+  flex: 1;
+  min-width: var(--sp-4);
+}
+
+/* A segmented group of icon buttons — the toolbar shape the canvas controls will
+   use from Phase 4 on. */
+.group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+}
+
+.tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm);
+  color: var(--c-text-muted);
+}
+
+.tool:hover:not(:disabled) {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.tool:disabled {
+  color: var(--c-text-subtle);
+  opacity: 0.6;
+  cursor: default;
+}
+
+.toolActive,
+.toolActive:hover {
+  background: var(--c-accent-subtle);
+  color: var(--c-accent);
+}
+
+/* Tabular numerals so the row does not twitch as the percentage changes while
+   zooming, and a min-width wide enough for "100%" for the same reason. */
+.zoom {
+  min-width: 52px;
+  height: 24px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.zoom:hover:not(:disabled),
+.zoom[data-state='open'] {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.zoom:disabled {
+  color: var(--c-text-subtle);
+  opacity: 0.6;
+  cursor: default;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex: none;
+}
+
+.divider {
+  width: 1px;
+  height: 16px;
+  flex: none;
+  background: var(--c-border-strong);
+}

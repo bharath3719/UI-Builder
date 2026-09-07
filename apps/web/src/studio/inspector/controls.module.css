@@ -1,0 +1,479 @@
+/* The inspector's controls — PLAN.md §8.
+
+   28px rows, a 12px muted label in a fixed left column, near-black values on the
+   right, hairlines instead of shadows, 3px radii. The one accent appears on focus
+   and on an active segment and nowhere else. */
+
+/* --- Rows ----------------------------------------------------------------- */
+
+.row {
+  display: grid;
+  /* A fixed label column rather than auto: ragged control edges down a panel read as
+     misalignment, and every section here shares the same measure. */
+  /* `auto` rather than a fixed 16px: the trailing slot holds a reset everywhere and a
+     bind toggle beside it in the Props tab. Rows within one tab all carry the same
+     affordances, so the measure stays even where it is looked at. */
+  grid-template-columns: 74px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--h-row);
+}
+
+/* A control that needs the full width — a segmented control with five options, the
+   spacing box. The label sits above it instead of beside it. */
+.rowWide {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'label reset'
+    'control control';
+  align-items: start;
+  row-gap: var(--sp-2);
+}
+
+.rowWide .rowLabel {
+  grid-area: label;
+}
+
+.rowWide .rowControl {
+  grid-area: control;
+}
+
+.rowWide .rowReset {
+  grid-area: reset;
+}
+
+.rowLabel {
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  /* Long property names truncate rather than wrapping the row to two lines. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowControl {
+  min-width: 0;
+}
+
+/* Always present, so setting a value never shifts the control beside it. */
+.rowReset {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-1);
+  min-width: 16px;
+  height: 16px;
+}
+
+/* The bind toggle — `{ }`, PLAN.md §10. Reads as an accent only while it is on. */
+.bind {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--c-text-subtle);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.bind:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.bindActive,
+.bindActive:hover {
+  background: var(--c-accent-subtle);
+  color: var(--c-accent);
+}
+
+.bind:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 1px;
+}
+
+.reset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--c-accent);
+  cursor: pointer;
+}
+
+.reset:hover {
+  background: var(--c-accent-subtle);
+}
+
+.reset:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 1px;
+}
+
+.cluster {
+  display: flex;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.cluster > * {
+  flex: 1;
+  min-width: 0;
+}
+
+/* --- Text and number fields ------------------------------------------------ */
+
+.input {
+  width: 100%;
+  height: var(--h-control);
+  min-width: 0;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  line-height: var(--h-control);
+}
+
+.input:hover {
+  border-color: var(--c-border-strong);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-focus-ring);
+}
+
+/* The inherited value, shown in the field it would be overriding. Subtle rather than
+   muted: it has to read as "not set here" at a glance next to a real value. */
+.input::placeholder {
+  color: var(--c-text-subtle);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+
+.textarea {
+  width: 100%;
+  padding: var(--sp-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  /* Vertical only: a field wider than its panel is a scroll bar, not a feature. */
+  resize: vertical;
+}
+
+.textarea:hover {
+  border-color: var(--c-border-strong);
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-focus-ring);
+}
+
+.textarea::placeholder {
+  color: var(--c-text-subtle);
+}
+
+.stepper {
+  display: contents;
+}
+
+.affixed {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.affix {
+  position: absolute;
+  left: var(--sp-3);
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  pointer-events: none;
+}
+
+.affixed .input {
+  padding-left: 22px;
+}
+
+/* --- Select ---------------------------------------------------------------- */
+
+.selectWrap {
+  position: relative;
+  display: flex;
+}
+
+.select {
+  width: 100%;
+  height: var(--h-control);
+  min-width: 0;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  /* The native arrow is the one piece of platform chrome kept: it is the affordance
+     that says "this opens", and replacing it costs a popup implementation. */
+  appearance: auto;
+}
+
+.select:hover {
+  border-color: var(--c-border-strong);
+}
+
+.select:focus-visible {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-focus-ring);
+}
+
+/* --- Segmented ------------------------------------------------------------- */
+
+.segmented {
+  display: flex;
+  width: 100%;
+  height: var(--h-control);
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+}
+
+.segment {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: var(--c-text-muted);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.segment:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.segmentActive,
+.segmentActive:hover {
+  background: var(--c-accent-subtle);
+  color: var(--c-accent);
+}
+
+.segment:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: -1px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* --- Checkbox -------------------------------------------------------------- */
+
+.checkbox {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--c-accent);
+  cursor: pointer;
+}
+
+.checkbox:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 2px;
+}
+
+/* --- Colour ---------------------------------------------------------------- */
+
+.color {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.color > :last-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.swatchWrap {
+  position: relative;
+  flex: none;
+}
+
+.swatch {
+  display: block;
+  width: var(--h-control);
+  height: var(--h-control);
+  padding: 2px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  cursor: pointer;
+}
+
+.swatch:hover {
+  border-color: var(--c-border-strong);
+}
+
+.swatch:focus-visible {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-focus-ring);
+}
+
+/* The checkerboard behind every swatch, so an unset or translucent value reads as
+   transparent rather than as white. */
+.swatchFill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  background-color: transparent;
+  background-image:
+    linear-gradient(45deg, var(--c-border) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--c-border) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--c-border) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--c-border) 75%);
+  background-size: 8px 8px;
+  background-position:
+    0 0,
+    0 4px,
+    4px -4px,
+    -4px 0;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+}
+
+/* The one place in the inspector that genuinely floats, so the one place with a
+   shadow (§8). */
+.palette {
+  position: absolute;
+  z-index: var(--z-dropdown);
+  top: calc(100% + 4px);
+  left: 0;
+  width: 184px;
+  padding: var(--sp-4);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  box-shadow: var(--shadow-popover);
+}
+
+.paletteLabel {
+  margin-bottom: var(--sp-3);
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+
+.tokens {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-5);
+}
+
+.token {
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.token:hover {
+  border-color: var(--c-accent);
+}
+
+.token:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 1px;
+}
+
+.tokenFill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+}
+
+.custom {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.picker {
+  width: 32px;
+  height: var(--h-control);
+  padding: 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  cursor: pointer;
+}
+
+.clear {
+  flex: 1;
+  height: var(--h-control);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text-muted);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.clear:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}

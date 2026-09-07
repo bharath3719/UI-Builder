@@ -1,0 +1,113 @@
+/**
+ * The expression field — PLAN.md §8's metrics, shared with `controls.module.css`.
+ *
+ * A bound field is monospace and tinted rather than badged: the `{{ }}` is already
+ * visible in the text, and a second marker saying the same thing costs a row of a panel
+ * that has none to spare.
+ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.inputWrap {
+  position: relative;
+  min-width: 0;
+}
+
+.input {
+  width: 100%;
+  height: var(--h-control);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+}
+
+.input:hover:not(:disabled) {
+  border-color: var(--c-border-strong);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-focus-ring);
+}
+
+.input:disabled {
+  background: var(--c-panel);
+  color: var(--c-text-subtle);
+}
+
+.input::placeholder {
+  color: var(--c-text-subtle);
+}
+
+.area {
+  height: auto;
+  padding: var(--sp-2) var(--sp-3);
+  line-height: var(--lh-normal);
+  resize: vertical;
+}
+
+/* Holds an expression rather than a literal. */
+.bound {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  background: var(--c-accent-subtle);
+  border-color: var(--c-accent-border);
+}
+
+.suggestions {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--sp-1));
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: var(--sp-1);
+  list-style: none;
+  max-height: 168px;
+  overflow-y: auto;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-popover);
+}
+
+.suggestion {
+  display: block;
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--c-text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.suggestion:hover {
+  background: var(--c-surface-hover);
+}
+
+.suggestionActive,
+.suggestionActive:hover {
+  background: var(--c-accent-subtle);
+  color: var(--c-accent);
+}
+
+.problem {
+  margin: 0;
+  color: var(--c-danger);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+}

@@ -1,0 +1,71 @@
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--c-overlay-scrim);
+  z-index: var(--z-dropdown);
+  animation: fade var(--dur) var(--ease);
+}
+
+.content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: min(420px, calc(100vw - var(--sp-9)));
+  transform: translate(-50%, -50%);
+  padding: var(--sp-7);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-popover);
+  z-index: var(--z-dropdown);
+  animation: rise var(--dur) var(--ease);
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 4px));
+  }
+}
+
+.title {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+}
+
+.description {
+  margin-top: var(--sp-3);
+  color: var(--c-text-muted);
+  font-size: var(--fs-md);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin-top: var(--sp-7);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+  margin-top: var(--sp-7);
+}
+
+/* A failure from the mutation behind the dialog — distinct from a field-level error,
+   which belongs under its own field. */
+.formError {
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--c-danger-subtle);
+  border: 1px solid var(--c-danger);
+  border-radius: var(--r-sm);
+  color: var(--c-danger);
+  font-size: var(--fs-sm);
+}

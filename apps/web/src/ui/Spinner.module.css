@@ -1,0 +1,15 @@
+.spinner {
+  display: inline-block;
+  flex: none;
+  border: 1.5px solid currentcolor;
+  border-top-color: transparent;
+  border-radius: var(--r-circle);
+  opacity: 0.75;
+  animation: spin 620ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}

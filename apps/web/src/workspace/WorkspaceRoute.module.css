@@ -1,0 +1,213 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--c-backdrop);
+}
+
+.scroll {
+  flex: 1;
+  overflow: auto;
+}
+
+.content {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--sp-9) var(--sp-8);
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-6);
+  margin-bottom: var(--sp-8);
+}
+
+.heading {
+  min-width: 0;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  margin-top: var(--sp-2);
+  color: var(--c-text-muted);
+  font-size: var(--fs-md);
+}
+
+.headerActions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  flex: none;
+}
+
+/* --- Grid ---------------------------------------------------------------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--sp-6);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+
+.card:hover {
+  border-color: var(--c-border-strong);
+}
+
+/* Archived projects stay in place and stay readable; the thumbnail recedes so an
+   archived card is distinguishable from an active one at a glance, without the
+   "Archived" label having to be the only signal. */
+.cardArchived .thumb {
+  opacity: 0.5;
+}
+
+/* The whole thumbnail is the link; the footer holds the name and the row menu, so a
+   click on the menu cannot also open the project. */
+.thumb {
+  display: block;
+  aspect-ratio: 16 / 10;
+  background: var(--c-backdrop);
+  border-bottom: 1px solid var(--c-border);
+  position: relative;
+  /* It is an anchor wrapping text in the no-thumbnail case, so it inherits the
+     browser's underline without this. */
+  text-decoration: none;
+}
+
+.thumbImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* No thumbnail yet — a flat surface, not an illustration (§8). */
+.thumbEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--c-text-subtle);
+  font-size: var(--fs-sm);
+}
+
+.cardFooter {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  min-width: 0;
+}
+
+.cardText {
+  min-width: 0;
+  flex: 1;
+}
+
+.cardName {
+  display: block;
+  color: var(--c-text);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardName:hover {
+  color: var(--c-accent);
+}
+
+.cardMeta {
+  display: block;
+  margin-top: 1px;
+  color: var(--c-text-subtle);
+  font-size: var(--fs-sm);
+}
+
+.archived {
+  color: var(--c-warn);
+}
+
+/* The row menu stays invisible until the card is hovered or the menu is open, so a
+   grid of twelve projects is not a grid of twelve buttons. */
+.rowMenu {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--h-control);
+  height: var(--h-control);
+  border-radius: var(--r-sm);
+  color: var(--c-text-subtle);
+  opacity: 0;
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.rowMenu:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.card:hover .rowMenu,
+.rowMenu:focus-visible,
+.rowMenu[data-state='open'] {
+  opacity: 1;
+}
+
+/* --- Empty and error states ---------------------------------------------- */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: var(--sp-9) var(--sp-8);
+  background: var(--c-surface);
+  border: 1px dashed var(--c-border-strong);
+  border-radius: var(--r-md);
+  text-align: center;
+}
+
+.emptyTitle {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+}
+
+.emptyMessage {
+  max-width: 42ch;
+  color: var(--c-text-muted);
+}
+
+.failure {
+  padding: var(--sp-6);
+  background: var(--c-danger-subtle);
+  border: 1px solid var(--c-danger);
+  border-radius: var(--r-md);
+  color: var(--c-danger);
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--sp-9);
+  color: var(--c-text-subtle);
+}

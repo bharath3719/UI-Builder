@@ -1,0 +1,264 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`snapshots > AboutUs.tsx 1`] = `
+"export function AboutUs() {
+  return (
+    <div
+      className="ub-stack"
+      data-direction="vertical"
+      data-gap="4"
+      data-align="stretch"
+      data-justify="start"
+    >
+      <p className="ub-text" data-size="base" data-tone="default">A small team.</p>
+    </div>
+  );
+}
+"
+`;
+
+exports[`snapshots > Home.module.css 1`] = `
+".ub-n-root {
+  min-height: 100%;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+}
+@media (min-width: 768px) {
+  .ub-n-root {
+    padding: 64px;
+  }
+}
+
+.ub-n-lede {
+  max-width: 560px;
+}
+
+.ub-n-cta {
+  font-weight: 600;
+}
+.ub-n-cta:hover {
+  transform: translateY(-1px);
+}
+
+.ub-n-prose {
+  max-width: 640px;
+}
+
+.ub-n-roster {
+  max-width: 640px;
+}
+"
+`;
+
+exports[`snapshots > Home.tsx 1`] = `
+"import { SortableRows } from '../components/SortableRows';
+
+import styles from './Home.module.css';
+
+export function Home() {
+  return (
+    <div className={\`ub-box \${styles['ub-n-root']}\`}>
+      <h1 className="ub-heading" data-level="1">Ship it</h1>
+      <p className={\`ub-text \${styles['ub-n-lede']}\`} data-size="base" data-tone="muted">
+        {'Costs < $5 & takes {one} minute'}
+      </p>
+      <div
+        className="ub-stack"
+        data-direction="horizontal"
+        data-gap="2"
+        data-align="center"
+        data-justify="start"
+        data-wrap="true"
+      >
+        <button
+          className={\`ub-button \${styles['ub-n-cta']}\`}
+          type="button"
+          data-variant="default"
+          data-size="lg"
+        >
+          Get started
+        </button>
+        <a
+          className="ub-link"
+          href="https://example.com"
+          target="_blank"
+          rel="noreferrer noopener"
+          data-underline="hover"
+        >
+          Docs
+        </a>
+        <span className="ub-avatar" data-size="default">
+          <img
+            className="ub-avatar-image"
+            src="https://example.com/a.png"
+            alt="Ada"
+            draggable={false}
+          />
+        </span>
+        <span className="ub-avatar" data-size="default">
+          <span className="ub-avatar-fallback">AL</span>
+        </span>
+        <select className="ub-select" defaultValue="" data-placeholder="">
+          <option value="" disabled hidden>Choose</option>
+          <option value="one">One</option>
+          <option value="two">Two</option>
+          <option value="three">three</option>
+        </select>
+        <label className="ub-checkbox">
+          <input className="ub-checkbox-input" type="checkbox" defaultChecked />
+          <span className="ub-checkbox-label">Accept terms</span>
+        </label>
+        <label className="ub-switch">
+          <input className="ub-switch-input" type="checkbox" role="switch" defaultChecked />
+          <span className="ub-switch-label">Notifications</span>
+        </label>
+        <label className="ub-switch">
+          <input className="ub-switch-input" type="checkbox" role="switch" />
+        </label>
+        <div
+          className="ub-radio-group"
+          role="radiogroup"
+          data-orientation="horizontal"
+          data-disabled=""
+        >
+          <label className="ub-radio">
+            <input type="radio" className="ub-radio-input" name="payment" value="card" disabled />
+            <span className="ub-radio-label">Card</span>
+          </label>
+          <label className="ub-radio">
+            <input
+              type="radio"
+              className="ub-radio-input"
+              name="payment"
+              value="bank"
+              defaultChecked
+              disabled
+            />
+            <span className="ub-radio-label">Bank transfer</span>
+          </label>
+          <label className="ub-radio">
+            <input type="radio" className="ub-radio-input" name="payment" value="crypto" disabled />
+            <span className="ub-radio-label">crypto</span>
+          </label>
+        </div>
+        <input className="ub-slider" type="range" min={0} max={1} step={0.25} defaultValue={0.5} />
+        <input
+          className="ub-date"
+          type="date"
+          defaultValue="2026-01-31"
+          min="2026-01-01"
+          max="2026-12-31"
+        />
+        <div className="ub-chat-message" data-role="user">
+          <span className="ub-chat-message-avatar" aria-hidden="true">A</span>
+          <div className="ub-chat-message-body">
+            <span className="ub-chat-message-author">Ada</span>
+            <div className="ub-chat-message-bubble">{'Line one\\nLine two'}</div>
+          </div>
+        </div>
+        <span className="ub-typing-indicator" data-bubble="true" role="status">
+          <span className="ub-typing-dots" aria-hidden="true">
+            <span className="ub-typing-dot" />
+            <span className="ub-typing-dot" />
+            <span className="ub-typing-dot" />
+          </span>
+          <span className="ub-typing-label">Thinking…</span>
+        </span>
+      </div>
+      <div className={\`ub-rich-text \${styles['ub-n-prose']}\`}>
+        <h2>What you get</h2>
+        <p>
+          {'A '}
+          <strong>real</strong>
+          {' parser, not '}
+          <code>dangerouslySetInnerHTML</code>
+          {'. Read the '}
+          <a href="/docs">docs</a>
+          {' or '}
+          the unsafe one.
+        </p>
+        <ul>
+          <li>Headings and lists</li>
+        </ul>
+        <ol>
+          <li>Ordered too</li>
+        </ol>
+        <blockquote>
+          {'Quoted, '}
+          <em>with emphasis</em>
+          .
+        </blockquote>
+        <hr />
+        <pre>
+          <code>{'const x = { a: 1 } as const;'}</code>
+        </pre>
+      </div>
+      <table className={\`ub-table \${styles['ub-n-roster']}\`} data-striped="">
+        <caption className="ub-table-caption">Who is on the project</caption>
+        <thead className="ub-table-head">
+          <tr className="ub-table-row">
+            <th className="ub-table-grip-cell" scope="col" />
+            <th className="ub-table-header" scope="col">Name</th>
+            <th className="ub-table-header" scope="col">Role</th>
+            <th className="ub-table-header" scope="col" />
+          </tr>
+        </thead>
+        <SortableRows>
+          <tr className="ub-table-row">
+            <td className="ub-table-grip-cell">
+              <button
+                type="button"
+                className="ub-table-grip"
+                data-grip=""
+                aria-label="Reorder row"
+              />
+            </td>
+            <td className="ub-table-cell">Ada Lovelace</td>
+            <td className="ub-table-cell">Owner</td>
+            <td className="ub-table-cell" />
+          </tr>
+          <tr className="ub-table-row">
+            <td className="ub-table-grip-cell">
+              <button
+                type="button"
+                className="ub-table-grip"
+                data-grip=""
+                aria-label="Reorder row"
+              />
+            </td>
+            <td className="ub-table-cell">Grace Hopper</td>
+            <td className="ub-table-cell">Editor</td>
+            <td className="ub-table-cell">Away</td>
+          </tr>
+        </SortableRows>
+      </table>
+    </div>
+  );
+}
+"
+`;
+
+exports[`snapshots > warnings 1`] = `
+[
+  "Skipped "Old carousel" (gone): no component named "Carousel" in the library.",
+]
+`;
+
+exports[`the emitted project > routes every page 1`] = `
+"import { BrowserRouter, Route, Routes } from 'react-router';
+import { Home } from './pages/Home';
+import { AboutUs } from './pages/AboutUs';
+
+export function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/about" element={<AboutUs />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+"
+`;

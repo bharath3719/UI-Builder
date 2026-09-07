@@ -1,0 +1,383 @@
+/* The document's own components. The list half mirrors the pages list — full-bleed rows
+   in a flush section — and the editor half mirrors the Data panel's cards, because it is
+   the same kind of thing: a small declaration with a name, a type and a value. */
+
+.components {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.list {
+  flex: none;
+  padding: var(--sp-2) 0;
+  outline: none;
+}
+
+/* --- Rows ----------------------------------------------------------------- */
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--h-layer);
+  padding: 0 var(--sp-3) 0 var(--sp-5);
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-tight);
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
+.row:hover {
+  background: var(--c-surface-hover);
+}
+
+.rowActive,
+.rowActive:hover {
+  background: var(--c-accent-subtle);
+  color: var(--c-accent);
+}
+
+.icon {
+  flex: none;
+  color: var(--c-text-muted);
+}
+
+.rowActive .icon {
+  color: inherit;
+}
+
+.name {
+  flex: none;
+  max-width: 65%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowActive .name {
+  font-weight: var(--fw-medium);
+}
+
+/* How many placements follow this component. Secondary to the name, always shown: it is
+   the fact that makes a component worth having, and the one wanted before a change. */
+.uses {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.rowActive .uses {
+  color: inherit;
+  opacity: 0.7;
+}
+
+.menuButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-left: var(--sp-1);
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--c-text-subtle);
+  cursor: default;
+  opacity: 0;
+}
+
+.row:hover .menuButton,
+.menuButton[data-state='open'] {
+  opacity: 1;
+}
+
+.menuButton:hover,
+.menuButton[data-state='open'] {
+  background: var(--c-surface-active);
+  color: var(--c-text);
+}
+
+/* --- Add ------------------------------------------------------------------- */
+
+.add {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: none;
+  width: 100%;
+  height: var(--h-layer);
+  padding: 0 var(--sp-5);
+  background: transparent;
+  border: none;
+  border-block: 1px solid var(--c-border);
+  color: var(--c-text-subtle);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: default;
+}
+
+.add:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.add:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--c-focus-ring);
+}
+
+.addSmall {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 2px var(--sp-2);
+  background: transparent;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  color: var(--c-text-subtle);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  cursor: default;
+}
+
+.addSmall:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+/* --- The open component ---------------------------------------------------- */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  flex: none;
+  padding: var(--sp-3) var(--sp-4) var(--sp-5);
+}
+
+.editorHead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.back {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  padding: 2px var(--sp-2) 2px var(--sp-1);
+  background: transparent;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  color: var(--c-text-subtle);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  cursor: default;
+}
+
+.back:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.editorTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+
+.groupTitle {
+  margin: 0;
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* --- Fields ---------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fieldLabel {
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+}
+
+.input,
+.textarea,
+.name,
+.type {
+  width: 100%;
+  min-width: 0;
+  padding: 0 var(--sp-2);
+  background: var(--c-input);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  color: var(--c-text);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+}
+
+.input,
+.name,
+.type {
+  height: var(--h-field);
+}
+
+.textarea {
+  padding: var(--sp-2);
+  line-height: var(--lh-normal);
+  resize: vertical;
+}
+
+.input:focus-visible,
+.textarea:focus-visible,
+.name:focus-visible,
+.type:focus-visible {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 1px var(--c-accent);
+}
+
+.input:disabled,
+.textarea:disabled,
+.name:disabled,
+.type:disabled {
+  color: var(--c-text-subtle);
+}
+
+.checkbox {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--c-accent);
+}
+
+/* --- Prop cards ------------------------------------------------------------ */
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.cardHead .name {
+  flex: 1;
+}
+
+.cardHead .type {
+  flex: none;
+  width: 84px;
+}
+
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--h-field);
+  height: var(--h-field);
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--c-text-subtle);
+  cursor: default;
+}
+
+.remove:hover:not(:disabled) {
+  background: var(--c-surface-hover);
+  color: var(--c-danger);
+}
+
+/* --- Notes ----------------------------------------------------------------- */
+
+.empty {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+}
+
+.editor .empty {
+  padding: 0;
+}
+
+.empty code {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+}
+
+.usage {
+  margin: 0;
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+}
+
+.problem {
+  margin: 0;
+  color: var(--c-danger);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+}

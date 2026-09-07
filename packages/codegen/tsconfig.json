@@ -1,0 +1,6 @@
+{
+  // React, not base: this package emits no JSX of its own, but `@ui-builder/components`
+  // publishes its `.tsx` sources and every consumer has to be able to parse them.
+  "extends": "@ui-builder/tsconfig/react.json",
+  "include": ["src"]
+}
