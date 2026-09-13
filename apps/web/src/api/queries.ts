@@ -8,16 +8,22 @@ import {
 import type {
   AddMemberRequest,
   AssetSummary,
+  CreateApiEndpointInput,
+  CreateApiIntegrationInput,
   CreateProjectRequest,
   CreateWorkspaceRequest,
   ProjectSummary,
   Role,
+  TestApiEndpointInput,
+  UpdateApiEndpointRequest,
+  UpdateApiIntegrationRequest,
   UpdateProjectRequest,
   UpdateWorkspaceRequest,
   WorkspaceSummary,
 } from '@ui-builder/schema';
 import * as assetsApi from './assets.js';
 import { ApiError } from './client.js';
+import * as integrationsApi from './integrations.js';
 import * as projectsApi from './projects.js';
 import * as workspacesApi from './workspaces.js';
 
@@ -30,6 +36,15 @@ export const keys = {
   workspaces: ['workspaces'] as const,
   workspace: (id: string) => ['workspaces', id] as const,
   members: (id: string) => ['workspaces', id, 'members'] as const,
+  /**
+   * One key for the whole set, endpoints included.
+   *
+   * They are embedded in the response (see the contract), so there is nothing finer to
+   * invalidate: adding an endpoint changes the integration it belongs to. Keeping it
+   * coarse is also what lets the studio's endpoint picker read one cache entry rather
+   * than joining two.
+   */
+  integrations: (workspaceId: string) => ['workspaces', workspaceId, 'integrations'] as const,
   assets: (projectId: string) => ['projects', projectId, 'assets'] as const,
   projects: (workspaceId: string, includeArchived: boolean) =>
     ['workspaces', workspaceId, 'projects', { includeArchived }] as const,
@@ -244,6 +259,96 @@ export function useRemoveMember(workspaceId: string, onRemoved?: (memberId: stri
       onRemoved?.(memberId);
     },
   });
+}
+
+/* ==========================================================================
+   API integrations
+   ========================================================================== */
+
+export function useIntegrations(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: keys.integrations(workspaceId ?? ''),
+    queryFn: workspaceId
+      ? ({ signal }: { signal: AbortSignal }) =>
+          integrationsApi.listIntegrations(workspaceId, signal)
+      : skipToken,
+  });
+}
+
+/**
+ * Every write here invalidates the same one key.
+ *
+ * Endpoints are embedded in their integration, so there is no finer thing to drop — and a
+ * connection's `hasSecret`, its endpoint list and an endpoint's captured sample all move
+ * as a unit from the studio's point of view. One key means no screen can be looking at a
+ * connection whose endpoints came from a different fetch.
+ */
+function useIntegrationMutation<TArgs, TResult>(
+  workspaceId: string,
+  run: (args: TArgs) => Promise<TResult>,
+) {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: run,
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.integrations(workspaceId) }),
+  });
+}
+
+export function useCreateIntegration(workspaceId: string) {
+  return useIntegrationMutation(workspaceId, (input: CreateApiIntegrationInput) =>
+    integrationsApi.createIntegration(workspaceId, input),
+  );
+}
+
+export function useUpdateIntegration(workspaceId: string) {
+  return useIntegrationMutation(
+    workspaceId,
+    ({ id, input }: { id: string; input: UpdateApiIntegrationRequest }) =>
+      integrationsApi.updateIntegration(workspaceId, id, input),
+  );
+}
+
+export function useDeleteIntegration(workspaceId: string) {
+  return useIntegrationMutation(workspaceId, (id: string) =>
+    integrationsApi.deleteIntegration(workspaceId, id),
+  );
+}
+
+export function useCreateEndpoint(workspaceId: string) {
+  return useIntegrationMutation(
+    workspaceId,
+    ({ integrationId, input }: { integrationId: string; input: CreateApiEndpointInput }) =>
+      integrationsApi.createEndpoint(workspaceId, integrationId, input),
+  );
+}
+
+export function useUpdateEndpoint(workspaceId: string) {
+  return useIntegrationMutation(
+    workspaceId,
+    (args: { integrationId: string; endpointId: string; input: UpdateApiEndpointRequest }) =>
+      integrationsApi.updateEndpoint(workspaceId, args.integrationId, args.endpointId, args.input),
+  );
+}
+
+export function useDeleteEndpoint(workspaceId: string) {
+  return useIntegrationMutation(
+    workspaceId,
+    (args: { integrationId: string; endpointId: string }) =>
+      integrationsApi.deleteEndpoint(workspaceId, args.integrationId, args.endpointId),
+  );
+}
+
+/**
+ * A test run writes `sampleResponse`, so it invalidates like any other mutation — the
+ * field picker has to see the sample the run just captured.
+ */
+export function useTestEndpoint(workspaceId: string) {
+  return useIntegrationMutation(
+    workspaceId,
+    (args: { integrationId: string; endpointId: string; input: TestApiEndpointInput }) =>
+      integrationsApi.testEndpoint(workspaceId, args.integrationId, args.endpointId, args.input),
+  );
 }
 
 /* ==========================================================================

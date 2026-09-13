@@ -249,6 +249,17 @@ export type ApiIntegrationSummary = z.infer<typeof ApiIntegrationSummary>;
  */
 const SecretUpdate = z.string().min(1, 'is required').max(4000, 'is too long').nullable();
 
+/**
+ * The three request schemas below carry `.default()`s, which makes their input and output
+ * types genuinely different — a caller may omit `contentType`, and the handler that
+ * receives it never sees it missing. So each gets two names rather than one:
+ *
+ *   `…Request` is the parsed shape, with defaults applied — what a service takes.
+ *   `…Input`   is what a caller has to provide — what the studio's client takes.
+ *
+ * Collapsing them to `z.infer` would make the client demand fields the server is there to
+ * fill in, which is the error this comment exists to stop someone "fixing".
+ */
 export const CreateApiIntegrationRequest = z.object({
   name: DisplayName,
   /** Derived from `name` when omitted, with a numeric suffix if that is taken. */
@@ -259,7 +270,8 @@ export const CreateApiIntegrationRequest = z.object({
   defaultHeaders: ApiHeaders.default({}),
   contentType: ApiContentType.default('application/json'),
 });
-export type CreateApiIntegrationRequest = z.infer<typeof CreateApiIntegrationRequest>;
+export type CreateApiIntegrationRequest = z.output<typeof CreateApiIntegrationRequest>;
+export type CreateApiIntegrationInput = z.input<typeof CreateApiIntegrationRequest>;
 
 export const UpdateApiIntegrationRequest = z
   .object({
@@ -282,7 +294,8 @@ export const CreateApiEndpointRequest = z.object({
   body: z.string().max(20000, 'is too long').nullable().default(null),
   resultPath: ResultPath.default(''),
 });
-export type CreateApiEndpointRequest = z.infer<typeof CreateApiEndpointRequest>;
+export type CreateApiEndpointRequest = z.output<typeof CreateApiEndpointRequest>;
+export type CreateApiEndpointInput = z.input<typeof CreateApiEndpointRequest>;
 
 export const UpdateApiEndpointRequest = z
   .object({
@@ -318,7 +331,8 @@ export const TestApiEndpointRequest = z.object({
   /** Store the response as the endpoint's `sampleResponse` when it succeeds. */
   save: z.boolean().default(true),
 });
-export type TestApiEndpointRequest = z.infer<typeof TestApiEndpointRequest>;
+export type TestApiEndpointRequest = z.output<typeof TestApiEndpointRequest>;
+export type TestApiEndpointInput = z.input<typeof TestApiEndpointRequest>;
 
 /**
  * What a test run reports.

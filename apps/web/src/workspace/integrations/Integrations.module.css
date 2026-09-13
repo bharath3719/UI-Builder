@@ -1,0 +1,457 @@
+/* The integrations editor: a tree of connections beside a detail pane.
+   Quiet by design (§8/D12) — hairline borders, one accent, no decoration. */
+
+.layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: var(--sp-6);
+  min-height: 0;
+  /* The two panes scroll independently, so a long endpoint list never pushes the form
+     out of reach and a long form never moves the tree. */
+  align-items: stretch;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--sp-3);
+  border-right: 1px solid var(--c-border);
+}
+
+.detail {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--sp-2);
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--sp-7) 0;
+}
+
+.empty,
+.placeholder {
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.placeholder {
+  padding-top: var(--sp-7);
+  text-align: center;
+}
+
+/* ---- The tree ---- */
+
+.tree,
+.treeEndpoints {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.tree {
+  gap: var(--sp-4);
+}
+
+.treeEndpoints {
+  margin-top: var(--sp-1);
+  padding-left: var(--sp-4);
+}
+
+.treeConnection,
+.treeEndpoint,
+.treeAdd {
+  display: flex;
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--c-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.treeConnection {
+  flex-direction: column;
+  gap: 1px;
+}
+
+.treeEndpoint,
+.treeAdd {
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.treeConnection:hover,
+.treeEndpoint:hover,
+.treeAdd:hover {
+  background: var(--c-surface-hover);
+}
+
+.treeOn,
+.treeOn:hover {
+  background: var(--c-accent-subtle);
+  color: var(--c-accent);
+}
+
+.treeName {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.treeUrl {
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.treeAdd {
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+}
+
+.treeAdd:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* A method is read as a tag, not as prose: fixed width so the names beside them line up
+   whatever the verb. */
+.method {
+  flex: none;
+  width: 44px;
+  color: var(--c-text-subtle);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.02em;
+}
+
+.method[data-method='POST'],
+.method[data-method='PUT'],
+.method[data-method='PATCH'] {
+  color: var(--c-warn);
+}
+
+.method[data-method='DELETE'] {
+  color: var(--c-danger);
+}
+
+/* ---- Forms ---- */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.label {
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.hint {
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+.fieldError {
+  color: var(--c-danger);
+  font-size: var(--fs-xs);
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  color: var(--c-text);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+
+.textarea {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.input:focus-visible,
+.select:focus-visible,
+.textarea:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: -1px;
+}
+
+.input:disabled,
+.select:disabled,
+.textarea:disabled {
+  background: var(--c-panel);
+  color: var(--c-text-muted);
+}
+
+.inputInvalid {
+  border-color: var(--c-danger);
+}
+
+.pair,
+.pathRow {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.pair {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* The method is a fixed-size choice; the path takes whatever is left. */
+.pathRow {
+  grid-template-columns: 120px 1fr;
+  align-items: start;
+}
+
+.secretRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+.formActions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--c-border);
+}
+
+.urlPreview {
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--c-panel);
+  border-radius: var(--r-sm);
+  color: var(--c-text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+
+.urlBase {
+  color: var(--c-text-subtle);
+}
+
+/* ---- Headers ---- */
+
+.headers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  align-items: flex-start;
+}
+
+.headerRow {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr auto;
+  gap: var(--sp-2);
+  width: 100%;
+  align-items: start;
+}
+
+.headerName {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+/* ---- Result path ---- */
+
+.pathOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.pathOption {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  color: var(--c-text);
+  font: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.pathOption:hover {
+  border-color: var(--c-border-strong);
+}
+
+.pathOptionOn {
+  background: var(--c-accent-subtle);
+  border-color: var(--c-accent-border);
+  color: var(--c-accent);
+}
+
+.pathOption code {
+  font-family: var(--font-mono);
+}
+
+.pathCount {
+  color: var(--c-text-subtle);
+}
+
+.pathOptionOn .pathCount {
+  color: inherit;
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  background: var(--c-panel);
+  border-radius: var(--r-sm);
+}
+
+.fieldsLabel {
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+}
+
+.fieldList {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--sp-1) var(--sp-4);
+}
+
+.fieldList li {
+  display: flex;
+  gap: var(--sp-2);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+}
+
+.fieldList code {
+  flex: none;
+  font-family: var(--font-mono);
+}
+
+.fieldSample {
+  color: var(--c-text-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Test run ---- */
+
+.testBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  align-items: flex-start;
+  padding: var(--sp-4);
+  background: var(--c-panel);
+  border-radius: var(--r-md);
+}
+
+.variables {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--sp-3);
+  width: 100%;
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: 100%;
+}
+
+.resultHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+}
+
+.badgeOk,
+.badgeBad {
+  flex: none;
+  padding: 1px var(--sp-2);
+  border-radius: var(--r-sm);
+  font-weight: var(--fw-medium);
+}
+
+.badgeOk {
+  background: var(--c-ok-subtle);
+  color: var(--c-ok);
+}
+
+.badgeBad {
+  background: var(--c-danger-subtle);
+  color: var(--c-danger);
+}
+
+.resultUrl {
+  color: var(--c-text-subtle);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resultTime {
+  flex: none;
+  margin-left: auto;
+  color: var(--c-text-subtle);
+}
+
+.resultError {
+  color: var(--c-danger);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+.resultBody {
+  max-height: 200px;
+  margin: 0;
+  padding: var(--sp-3);
+  overflow: auto;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}

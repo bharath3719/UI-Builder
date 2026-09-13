@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Users } from 'lucide-react';
+import { Plug, Plus, Users } from 'lucide-react';
 import { hasAtLeast, REQUIRES } from '@ui-builder/schema';
 import { keys, useProjects, useWorkspaces } from '../api/queries.js';
 import { formErrorMessage } from '../lib/formErrors.js';
@@ -9,6 +9,7 @@ import { AppBar } from '../shell/AppBar.js';
 import { Button } from '../ui/Button.js';
 import { ScreenLoading, ScreenMessage } from '../ui/Screen.js';
 import { Spinner } from '../ui/Spinner.js';
+import { IntegrationsDialog } from './integrations/IntegrationsDialog.js';
 import { MembersDialog } from './MembersDialog.js';
 import { NewProjectDialog } from './NewProjectDialog.js';
 import { ProjectCard } from './ProjectCard.js';
@@ -29,6 +30,7 @@ export function WorkspaceRoute() {
 
   const [creating, setCreating] = useState(false);
   const [managingMembers, setManagingMembers] = useState(false);
+  const [managingIntegrations, setManagingIntegrations] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
 
   const workspace = workspaces.data?.find((candidate) => candidate.slug === workspaceSlug);
@@ -96,6 +98,13 @@ export function WorkspaceRoute() {
                 Members
               </Button>
 
+              {/* Same reasoning as Members: a viewer building nothing still needs to see
+                  which APIs a page is calling. The dialog gates the editing. */}
+              <Button variant="ghost" onClick={() => setManagingIntegrations(true)}>
+                <Plug size={14} aria-hidden="true" />
+                APIs
+              </Button>
+
               {canCreate && (
                 <Button variant="primary" onClick={() => setCreating(true)}>
                   <Plus size={14} aria-hidden="true" />
@@ -147,6 +156,11 @@ export function WorkspaceRoute() {
         workspace={workspace}
         open={managingMembers}
         onOpenChange={setManagingMembers}
+      />
+      <IntegrationsDialog
+        workspace={workspace}
+        open={managingIntegrations}
+        onOpenChange={setManagingIntegrations}
       />
     </div>
   );
