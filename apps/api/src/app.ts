@@ -8,6 +8,7 @@ import authRoutes from './modules/auth/routes.js';
 import documentRoutes from './modules/documents/routes.js';
 import exportRoutes from './modules/export/routes.js';
 import healthRoutes from './modules/health/routes.js';
+import integrationRoutes from './modules/integrations/routes.js';
 import projectRoutes from './modules/projects/routes.js';
 import publishRoutes from './modules/publish/routes.js';
 import workspaceRoutes from './modules/workspaces/routes.js';
@@ -66,6 +67,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(workspaceRoutes, { prefix: '/api/workspaces' });
+  // API integrations hang off a workspace, so they share its prefix — but they are their
+  // own module: an outbound HTTP client and a credential store are not workspace concerns.
+  await app.register(integrationRoutes, { prefix: '/api/workspaces' });
   // Project routes carry their own paths: some hang off a workspace, some off a
   // project id, so a single prefix would fit only half of them.
   await app.register(projectRoutes, { prefix: '/api' });

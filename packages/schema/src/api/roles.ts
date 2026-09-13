@@ -41,4 +41,20 @@ export const REQUIRES = {
   projectWrite: 'EDITOR',
   /** Deleting a project and its history for good. */
   projectDelete: 'ADMIN',
+  /** Listing a workspace's API integrations and their endpoints — never their secrets. */
+  integrationRead: 'VIEWER',
+  /** Creating, editing and deleting connections and endpoints, and setting a token. */
+  integrationWrite: 'EDITOR',
+  /**
+   * Reading a stored token back.
+   *
+   * Editor rather than viewer, and the consequence is worth stating: a viewer can open a
+   * project whose queries need this token and will see those queries fail, because the
+   * browser makes the call itself and cannot be handed a credential its role may not read.
+   * That is the price of the direct-from-browser call path — a server-side proxy would
+   * make the question moot by never handing the token to anyone. Loosen it here, in one
+   * line, if a workspace would rather its viewers saw live data than kept the token from
+   * them.
+   */
+  integrationSecretRead: 'EDITOR',
 } as const satisfies Record<string, Role>;

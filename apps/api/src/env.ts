@@ -19,6 +19,44 @@ const EnvSchema = z.object({
   JWT_SECRET: z.string().min(32, 'must be at least 32 characters'),
 
   /*
+   * The key that encrypts stored API-integration tokens (src/lib/secrets.ts).
+   *
+   * Optional, and derived from JWT_SECRET when absent, so a fresh checkout boots without
+   * it. Set it to 32 bytes as base64 or hex for real key separation. Changing it makes
+   * already-stored tokens undecryptable — they have to be re-entered, which the studio
+   * asks for rather than failing silently.
+   */
+  INTEGRATION_KEY: z
+    .string()
+    .optional()
+    .transform((value, ctx) => {
+      if (value === undefined || value === '') return undefined;
+
+      const decoded = /^[0-9a-fA-F]{64}$/.test(value)
+        ? Buffer.from(value, 'hex')
+        : Buffer.from(value, 'base64');
+
+      if (decoded.length !== 32) {
+        ctx.addIssue({ code: 'custom', message: 'must be 32 bytes, as base64 or hex' });
+        return z.NEVER;
+      }
+
+      return decoded;
+    }),
+
+  /*
+   * Whether an integration test run may reach addresses inside this machine's own
+   * network. See src/lib/outbound.ts for why the default differs by environment: local
+   * development routinely points at localhost, and production must not be able to reach
+   * the metadata service.
+   */
+  INTEGRATION_ALLOW_PRIVATE_NETWORK: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((value) => value ?? (process.env.NODE_ENV === 'production' ? 'false' : 'true'))
+    .transform((value) => value === 'true'),
+
+  /*
    * Object storage for uploaded assets — S3, or anything speaking its API (R2, MinIO).
    *
    * Every field is optional, and that is deliberate: this repo's premise is that it runs

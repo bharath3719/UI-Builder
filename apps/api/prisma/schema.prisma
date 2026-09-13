@@ -48,8 +48,9 @@ model Workspace {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members  WorkspaceMember[]
-  projects Project[]
+  members      WorkspaceMember[]
+  projects     Project[]
+  integrations ApiIntegration[]
 }
 
 model WorkspaceMember {
@@ -127,6 +128,77 @@ model Asset {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+}
+
+/// Mirrors `HTTP_METHODS` in packages/schema/src/doc.ts — same strings, so a method
+/// crosses the boundary without mapping, the way `Role` does.
+enum HttpMethod {
+  GET
+  POST
+  PUT
+  PATCH
+  DELETE
+}
+
+/// A saved connection to an outside HTTP API, shared by every project in the workspace.
+/// See packages/schema/src/api/integrations.ts for what each field means and why the
+/// token is stored apart from everything else.
+model ApiIntegration {
+  id          String @id @default(cuid(2))
+  workspaceId String
+  name        String
+  /// Stable identifier. Codegen derives the export's environment-variable name from it,
+  /// so it must survive a rename of `name`.
+  slug        String
+  baseUrl     String
+
+  /// The non-secret half of the auth scheme — an `ApiAuth` from the shared contract.
+  /// Json rather than columns because it is a discriminated union whose arms carry
+  /// different fields, and splaying those into nullable columns loses the discrimination.
+  auth Json
+
+  /// AES-256-GCM, laid out as `iv (12 bytes) || tag (16) || ciphertext`. Null when the
+  /// connection has no credential. Encrypted at rest so a database dump or a backup does
+  /// not hand over live tokens — see apps/api/src/lib/secrets.ts.
+  secretCipher Bytes?
+
+  defaultHeaders Json
+  contentType    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  endpoints ApiEndpoint[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+}
+
+/// One named call on an integration.
+model ApiEndpoint {
+  id            String     @id @default(cuid(2))
+  integrationId String
+  name          String
+  method        HttpMethod
+  /// Relative to the integration's base URL, and template source: `/users/{{ id }}`.
+  path          String
+  headers       Json
+  body          String?
+  /// Dotted path to the array inside a response, or '' when the response is the array.
+  resultPath    String     @default("")
+
+  /// One captured response, for the studio's field picker. Authoring-time only —
+  /// nothing at run time reads it.
+  sampleResponse Json?
+  sampledAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  integration ApiIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([integrationId])
 }
 
 model RefreshToken {

@@ -1,4 +1,8 @@
 import type {
+  ApiEndpointSummary,
+  ApiIntegrationSummary,
+  CreateApiEndpointRequest,
+  CreateApiIntegrationRequest,
   ProjectSummary,
   Role,
   WorkspaceMemberSummary,
@@ -52,6 +56,35 @@ export async function createProject(
   const response = await api.post(`/api/workspaces/${workspaceId}/projects`, { as: actor, body });
   expectStatus('createProject', response.statusCode, 201, response.body);
   return response.json<ProjectSummary>();
+}
+
+export async function createIntegration(
+  api: TestApi,
+  actor: TestUser,
+  workspaceId: string,
+  body: Partial<CreateApiIntegrationRequest> & { name?: string } = {},
+): Promise<ApiIntegrationSummary> {
+  const response = await api.post(`/api/workspaces/${workspaceId}/integrations`, {
+    as: actor,
+    body: { name: 'Acme CRM', baseUrl: 'https://api.acme.io', ...body },
+  });
+  expectStatus('createIntegration', response.statusCode, 201, response.body);
+  return response.json<ApiIntegrationSummary>();
+}
+
+export async function createEndpoint(
+  api: TestApi,
+  actor: TestUser,
+  workspaceId: string,
+  integrationId: string,
+  body: Partial<CreateApiEndpointRequest> & { name?: string } = {},
+): Promise<ApiEndpointSummary> {
+  const response = await api.post(
+    `/api/workspaces/${workspaceId}/integrations/${integrationId}/endpoints`,
+    { as: actor, body: { name: 'List users', path: '/users', ...body } },
+  );
+  expectStatus('createEndpoint', response.statusCode, 201, response.body);
+  return response.json<ApiEndpointSummary>();
 }
 
 /**
