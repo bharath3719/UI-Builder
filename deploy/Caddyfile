@@ -1,0 +1,42 @@
+# Caddy fronts the whole app: it terminates TLS, serves the studio's static build, and
+# forwards the two API paths to Fastify.
+#
+# SITE_ADDRESS comes from the environment (see .env.example). Set it to your domain and
+# Caddy gets a Let's Encrypt certificate on first boot and renews it thereafter — which
+# is the entire reason Caddy is here rather than nginx. Set it to :80 instead and you get
+# plain HTTP, which is fine for a first smoke test against the instance's public IP but
+# not for anything real: the session cookie is marked Secure.
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# The same two prefixes vite.config.ts proxies in development. Keeping the studio and
+	# the API on one origin means the browser sends the auth cookie without a CORS
+	# preflight on every request, and WEB_ORIGIN below only has to name this one host.
+	@api path /api/* /health
+	handle @api {
+		reverse_proxy api:3000
+	}
+
+	# Vite writes content-hashed filenames into assets/, so those can be cached hard.
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	# index.html must not be cached, or a deploy leaves browsers loading the previous
+	# build's asset URLs until they happen to revalidate.
+	@index path /
+	header @index Cache-Control "no-cache"
+
+	handle {
+		root * /srv
+		# React Router owns the URL space, so anything that is not a real file is the SPA
+		# shell rather than a 404.
+		try_files {path} /index.html
+		file_server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

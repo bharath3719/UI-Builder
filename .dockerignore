@@ -1,0 +1,38 @@
+# Both images build from the repo root, because npm workspaces means a package cannot be
+# installed without the root lockfile. That makes the build context the whole repo, so
+# everything reproducible-from-source or machine-local is excluded here — node_modules
+# most of all, since copying a Windows install into a linux/arm64 image would drag in
+# native modules built for the wrong platform.
+
+node_modules
+**/node_modules
+dist
+**/dist
+build
+.vite
+**/.vite
+coverage
+*.tsbuildinfo
+
+.git
+.github
+
+# Prisma regenerates this inside the image (it is gitignored for the same reason).
+apps/api/src/generated
+
+# Real secrets never enter the build context; the .example files are documentation.
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+playwright-report
+test-results
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.idea
+.vscode

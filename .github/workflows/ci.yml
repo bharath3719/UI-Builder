@@ -16,9 +16,12 @@ jobs:
   # would mean repeating `npm ci` and `prisma generate` in each shard to save less time
   # than that setup costs. Revisit if the suite outgrows a few minutes.
   check:
-    name: format · lint · typecheck · test · build
+    name: format · lint · typecheck · build
     runs-on: ubuntu-latest
 
+    # Only the (now removed) test step ever connected to this. It is kept so re-enabling
+    # the suite is a one-line change in vitest.config.ts rather than a workflow rewrite;
+    # drop this block if you decide the tests are gone for good.
     services:
       postgres:
         image: postgres:17
@@ -74,8 +77,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test
-        run: npm test
+      # The test step is intentionally gone — the suite is disabled in vitest.config.ts.
+      # Put `- name: Test` / `run: npm test` back here if you re-enable it there.
 
       - name: Build
         run: npm run build
