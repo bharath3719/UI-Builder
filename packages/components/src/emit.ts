@@ -159,7 +159,23 @@ export type EmitChild =
    * behind `Select`, whose choices are data typed into a textarea rather than child
    * nodes (§7).
    */
-  | { options: { prop: string } }
+  | {
+      options: {
+        prop: string;
+        /**
+         * Which key of each item is the value and which is the label, for when `prop` is
+         * *bound* to an array rather than typed as lines.
+         *
+         * Their presence is what lets this transform have a second form at all: with the
+         * fields known while generating, the generator can write a `.map()` over the bound
+         * array instead of refusing it (see `staticOnly`). Left empty they fall back to the
+         * conventional keys, which is what makes binding a plain list of records work with
+         * nothing configured.
+         */
+        valueField?: string;
+        labelField?: string;
+      };
+    }
   /**
    * The same option list expanded into labelled radio inputs — `Radio`.
    *

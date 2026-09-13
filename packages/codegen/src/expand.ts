@@ -54,6 +54,7 @@ import {
   initialsCode,
   listCode,
   numberCode,
+  optionsCode,
   textCode,
   truthyCode,
   type Emitted,
@@ -524,8 +525,44 @@ function expandChild(child: EmitChild, context: ExpandContext): JsxNode[] {
   }
 
   if ('options' in child) {
-    staticOnly(context, 'the option list', [child.options.prop]);
-    return parseOptions(asString(readProp(context.node, child.options.prop))).map((option) =>
+    const { node } = context;
+    const spec = child.options;
+    const bound = node.props[spec.prop]?.kind === 'expr' ? node.props[spec.prop] : undefined;
+
+    /*
+     * A bound option list, as a map — the same second form the table body grew.
+     *
+     * Unlike the table this needs no field list to be declared: `option()` falls back to
+     * the conventional keys at run time, exactly as `buildOptions` does on the canvas, so
+     * there is nothing the generator has to know in advance. That is why this branch has
+     * no "and warn if not configured" case and the table's does.
+     */
+    if (bound) {
+      const source = emitProp(bound, context.helpers);
+      const code = source.kind === 'code' ? source.code : stringLiteral(String(source.value ?? ''));
+      const field = (name: string | undefined): string =>
+        name === undefined ? '' : asString(readProp(node, name));
+
+      return [
+        {
+          kind: 'map',
+          over: optionsCode(code, field(spec.valueField), field(spec.labelField), context.helpers),
+          params: '(option)',
+          statements: [],
+          child: element(
+            'option',
+            [
+              { name: 'key', kind: 'expr', code: 'option.value' },
+              { name: 'value', kind: 'expr', code: 'option.value' },
+            ],
+            [{ kind: 'expr', code: 'option.label' }],
+          ),
+        },
+      ];
+    }
+
+    staticOnly(context, 'the option list', [spec.prop]);
+    return parseOptions(asString(readProp(node, spec.prop))).map((option) =>
       element(
         'option',
         [{ name: 'value', kind: 'string', value: option.value }],

@@ -334,6 +334,7 @@ export function interactiveDoc(): ProjectDoc {
           'empty',
           'people',
           'roster',
+          'picker',
           'away',
         ],
         props: { gap: '4' },
@@ -465,6 +466,18 @@ export function interactiveDoc(): ProjectDoc {
           emptyText: 'Nobody matched that search.',
         },
         bound: { rows: '{{ queries.people.data }}' },
+      },
+      /*
+       * A dropdown filled by the same query, for the same reason the table is here: the
+       * generated `options(...)` call has to typecheck against the helper's real
+       * signature, and only the export's own `tsc` checks that.
+       */
+      {
+        id: 'picker',
+        type: 'Select',
+        name: 'Assignee',
+        props: { placeholder: 'Assign to', valueField: 'name', labelField: 'role' },
+        bound: { options: '{{ queries.people.data }}' },
       },
       {
         id: 'away',

@@ -36,7 +36,7 @@ export type Emitted = { kind: 'static'; value: Json | undefined } | { kind: 'cod
  * need is a build failure rather than an untidiness.
  */
 export type ValueHelper =
-  'text' | 'truthy' | 'num' | 'pick' | 'list' | 'initials' | 'initial' | 'cx' | 'cell';
+  'text' | 'truthy' | 'num' | 'pick' | 'list' | 'initials' | 'initial' | 'cx' | 'cell' | 'options';
 
 export type Helpers = Set<ValueHelper>;
 
@@ -336,4 +336,21 @@ function stripLiterals(source: string): string {
  */
 export function cellCode(rowVar: string, field: string, helpers: Helpers): string {
   return `${using(helpers, 'cell')}(${rowVar}, ${stringLiteral(field)})`;
+}
+
+/**
+ * A bound option list, normalised at run time.
+ *
+ * Emitted as a call rather than resolved while generating, because the items are not known
+ * until the request comes back. The helper is the export's copy of `buildOptions`, so a
+ * `Select` bound to a query offers the same choices in the exported app as it does on the
+ * canvas — which is the whole of D6 applied to a dropdown.
+ */
+export function optionsCode(
+  code: string,
+  valueField: string,
+  labelField: string,
+  helpers: Helpers,
+): string {
+  return `${using(helpers, 'options')}(${code}, ${stringLiteral(valueField)}, ${stringLiteral(labelField)})`;
 }

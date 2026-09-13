@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { buildTable } from './derive.js';
+import { buildOptions, buildTable } from './derive.js';
 
 describe('buildTable, bound to an array', () => {
   const people = [
@@ -90,5 +90,62 @@ describe('buildTable, bound to an array', () => {
 
     expect(table.headers).toEqual(['Name', 'Role']);
     expect(table.rows).toEqual([]);
+  });
+});
+
+describe('buildOptions, bound to an array', () => {
+  it('reads the conventional keys when none are named', () => {
+    const options = buildOptions([
+      { id: 'a', name: 'Ada' },
+      { id: 'g', name: 'Grace' },
+    ]);
+
+    expect(options).toEqual([
+      { value: 'a', label: 'Ada' },
+      { value: 'g', label: 'Grace' },
+    ]);
+  });
+
+  it('prefers value over id, and label over name', () => {
+    const options = buildOptions([{ value: 'v', id: 'i', label: 'L', name: 'N' }]);
+
+    expect(options).toEqual([{ value: 'v', label: 'L' }]);
+  });
+
+  it('reads the fields it was told to', () => {
+    const options = buildOptions([{ code: 'gb', title: 'United Kingdom' }], 'code', 'title');
+
+    expect(options).toEqual([{ value: 'gb', label: 'United Kingdom' }]);
+  });
+
+  /** An array of strings is a perfectly reasonable thing to put in a dropdown. */
+  it('treats a plain value as its own value and label', () => {
+    expect(buildOptions(['alpha', 'beta'])).toEqual([
+      { value: 'alpha', label: 'alpha' },
+      { value: 'beta', label: 'beta' },
+    ]);
+  });
+
+  it('falls back to the other half when a row has only one of them', () => {
+    expect(buildOptions([{ name: 'Ada' }])).toEqual([{ value: 'Ada', label: 'Ada' }]);
+    expect(buildOptions([{ id: 7 }])).toEqual([{ value: '7', label: '7' }]);
+  });
+
+  /** A row bound one level too high should not become a choice nobody can pick. */
+  it('drops a row with neither a value nor a label', () => {
+    expect(buildOptions([{ shape: { deep: true } }, { id: 'ok' }])).toEqual([
+      { value: 'ok', label: 'ok' },
+    ]);
+  });
+
+  it('still parses a typed list', () => {
+    expect(buildOptions('a | A\nb | B')).toEqual([
+      { value: 'a', label: 'A' },
+      { value: 'b', label: 'B' },
+    ]);
+  });
+
+  it.each([[undefined], [null], [42]])('treats the non-array, non-string %j as empty', (value) => {
+    expect(buildOptions(value)).toEqual([]);
   });
 });

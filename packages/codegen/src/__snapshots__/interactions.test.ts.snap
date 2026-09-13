@@ -2,7 +2,7 @@
 
 exports[`the interactive project > is this page 1`] = `
 "import { useState, type ChangeEvent } from 'react';
-import { cell, list, pick, text, truthy } from '../lib/values';
+import { cell, list, options, pick, text, truthy } from '../lib/values';
 import { useQuery } from '../lib/query';
 import { useGoTo } from '../lib/navigate';
 import { Toasts, useToasts } from '../lib/toast';
@@ -178,6 +178,12 @@ export function Home() {
             ))}
           </SortableRows>
         </table>
+        <select className="ub-select" defaultValue="" data-placeholder="">
+          <option value="" disabled hidden>Assign to</option>
+          {options(queries.people.data, 'name', 'role').map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
       </div>
       <Toasts toasts={toasts} />
     </>

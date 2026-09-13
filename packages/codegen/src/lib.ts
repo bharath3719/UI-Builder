@@ -163,6 +163,45 @@ export function list(value: unknown): any[] {
 }
 
 /**
+ * A bound option list, normalised into the value/label pairs a <select> needs.
+ *
+ * The export's copy of buildOptions: an item that is a plain value is its own value and
+ * label, and an object is read by the named fields — or, when none were named, by the
+ * conventional ones. Falling back is what makes binding an ordinary API response work
+ * with nothing configured, and the canvas does exactly the same thing, so the choices
+ * offered here are the choices the builder showed.
+ */
+export function options(
+  value: unknown,
+  valueField = '',
+  labelField = '',
+): { value: string; label: string }[] {
+  const VALUE_KEYS = ['value', 'id', 'key'];
+  const LABEL_KEYS = ['label', 'name', 'title', 'text'];
+
+  const read = (row: Record<string, unknown>, named: string, fallbacks: string[]) => {
+    if (named !== '') return named in row ? cell(row, named) : null;
+    const found = fallbacks.find((key) => key in row);
+    return found === undefined ? null : cell(row, found);
+  };
+
+  return list(value).flatMap((item) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      const label = text(item);
+      return label === '' ? [] : [{ value: label, label }];
+    }
+
+    const row = item as Record<string, unknown>;
+    const found = read(row, valueField, VALUE_KEYS);
+    const label = read(row, labelField, LABEL_KEYS);
+    if (found === null && label === null) return [];
+
+    const resolved = found ?? label!;
+    return [{ value: resolved, label: label ?? resolved }];
+  });
+}
+
+/**
  * A class list, skipping the parts that are not there.
  *
  * A component in src/components takes a className from whoever placed it — that is the one

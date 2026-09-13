@@ -499,20 +499,51 @@ describe('overlays', () => {
   });
 });
 
-describe('what the export cannot carry', () => {
-  test('a bound option list exports empty, and says so', () => {
-    // The transform's *shape* is the text it parses, which is why it is a transform at all
-    // (`emit.ts`). Making it dynamic means shipping its parser and writing its markup a
-    // second time; a silently empty `<select>` is the failure this warning exists to avoid.
+describe('a bound option list', () => {
+  /**
+   * This used to be in "what the export cannot carry", asserting an empty `<select>` and a
+   * warning: the transform's shape is the text it parses, so a bound source had nothing to
+   * parse. What changed is that the shape does not actually depend on the text — every
+   * item becomes one `<option>` — so the generator can write the map and let the run time
+   * supply the items, the same way the table body now does.
+   */
+  test('exports as a map, so the dropdown really is filled by the query', () => {
     const { tsx, warnings } = generatePage(
-      pageOf({ type: 'Select', name: 'Choice', bound: { options: '{{ state.options }}' } }),
+      pageOf({ type: 'Select', name: 'Choice', bound: { options: '{{ queries.people.data }}' } }),
       DEFAULT_THEME,
     );
 
-    expect(tsx).not.toContain('<option');
-    expect(warnings[0]).toContain('the option list is built from "options"');
+    expect(tsx).toContain("options(queries.people.data, '', '')");
+    expect(tsx).toContain('<option key={option.value} value={option.value}>');
+    expect(warnings).toEqual([]);
   });
 
+  test('passes the named fields through, for data that does not use the usual keys', () => {
+    const { tsx } = generatePage(
+      pageOf({
+        type: 'Select',
+        name: 'Choice',
+        props: { valueField: 'code', labelField: 'title' },
+        bound: { options: '{{ queries.people.data }}' },
+      }),
+      DEFAULT_THEME,
+    );
+
+    expect(tsx).toContain("options(queries.people.data, 'code', 'title')");
+  });
+
+  test('a typed list is still expanded while generating, with no helper at all', () => {
+    const { tsx } = generatePage(
+      pageOf({ type: 'Select', name: 'Choice', props: { options: 'a | A\nb | B' } }),
+      DEFAULT_THEME,
+    );
+
+    expect(tsx).toContain('<option value="a">A</option>');
+    expect(tsx).not.toContain('options(');
+  });
+});
+
+describe('what the export cannot carry', () => {
   test('a bound element name exports as its fallback, and says so', () => {
     const { tsx, warnings } = generatePage(
       pageOf({ type: 'Heading', name: 'Title', bound: { level: '{{ state.level }}' } }),

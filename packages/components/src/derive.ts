@@ -263,3 +263,61 @@ export function buildTable(columns: string, fields: string, rows: unknown): Tabl
   if (Array.isArray(rows)) return tableFromData(columns, fields, rows);
   return parseTable(columns, typeof rows === 'string' ? rows : '');
 }
+
+/**
+ * The same option list, from a bound array instead of typed lines.
+ *
+ * `Select`, `Radio` and anything else built on `parseOptions` share the problem `Table`
+ * had: a dropdown whose choices come from an API is the ordinary case, and a newline-
+ * separated string cannot be one. `valueField`/`labelField` name which key of each item is
+ * the value and which is the label — left empty they fall back to the conventional pair,
+ * and then to the item itself, so binding an array of plain strings just works.
+ */
+export function optionsFromData(
+  data: readonly unknown[],
+  valueField: string,
+  labelField: string,
+): SelectOption[] {
+  const VALUE_KEYS = ['value', 'id', 'key'];
+  const LABEL_KEYS = ['label', 'name', 'title', 'text'];
+
+  const pick = (
+    row: Record<string, unknown>,
+    named: string,
+    fallbacks: string[],
+  ): string | null => {
+    if (named !== '') return named in row ? stringifyCell(row[named]) : null;
+    const found = fallbacks.find((key) => key in row);
+    return found === undefined ? null : stringifyCell(row[found]);
+  };
+
+  return data.flatMap((item) => {
+    // A plain value is its own value and its own label — an array of strings is a
+    // perfectly reasonable thing to bind to a dropdown.
+    if (!isRecord(item)) {
+      const text = stringifyCell(item);
+      return text === '' ? [] : [{ value: text, label: text }];
+    }
+
+    const value = pick(item, valueField, VALUE_KEYS);
+    const label = pick(item, labelField, LABEL_KEYS);
+
+    // An object with neither is a row bound one level too high. Dropped rather than
+    // rendered as an empty choice nobody can pick.
+    if (value === null && label === null) return [];
+
+    const resolved = value ?? label!;
+    return [{ value: resolved, label: label ?? resolved }];
+  });
+}
+
+/**
+ * The one entry point for an option list, whichever way it was authored.
+ *
+ * Mirrors `buildTable`: the renderer and the generator both call this, so a `Select` bound
+ * to a query cannot render one set of choices on the canvas and another in the export.
+ */
+export function buildOptions(options: unknown, valueField = '', labelField = ''): SelectOption[] {
+  if (Array.isArray(options)) return optionsFromData(options, valueField, labelField);
+  return parseOptions(typeof options === 'string' ? options : '');
+}
