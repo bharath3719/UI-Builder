@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { NODE_ID_ATTRIBUTE, PageRenderer } from '@ui-builder/runtime';
+import { useIntegrationCatalog } from '../../api/useIntegrationCatalog.js';
 import { isLocked, symbolDefaultProps, type Node, type NodeId } from '@ui-builder/schema';
 import { useStudio } from '../state/context.js';
 import {
@@ -93,9 +94,12 @@ export function Canvas() {
     viewport,
     cell,
     artboardWidth,
+    workspaceId,
     select,
     hover,
   } = studio;
+
+  const integrations = useIntegrationCatalog(workspaceId);
 
   const symbolProps = useMemo(() => (symbol ? symbolDefaultProps(symbol) : undefined), [symbol]);
 
@@ -499,6 +503,9 @@ export function Canvas() {
               page={page}
               symbols={symbols}
               theme={theme}
+              // The workspace's API connections, credentials included. Held by the host
+              // rather than the document, which carries none — see `useIntegrationCatalog`.
+              integrations={integrations}
               // Editing a component renders it against its own defaults, which is what a
               // placement that sets nothing would show. Without them every binding in it
               // would draw its fallback, and a component is not buildable if you cannot

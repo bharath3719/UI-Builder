@@ -231,6 +231,9 @@ export function PreviewRoute() {
         symbols={doc.symbols}
         theme={doc.theme}
         device={device}
+        // The preview is behind auth and shows the caller their own workspace, so its
+        // queries run for real — unlike the shared page, which cannot have the tokens.
+        workspaceId={project.data.workspaceId}
         // A nav item in the design is a real destination here: it moves the preview to
         // the page holding that path, address and all, so the link is as shareable as
         // the one the page switcher above produces. A path no page claims does nothing —

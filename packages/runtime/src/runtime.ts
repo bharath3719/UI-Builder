@@ -9,6 +9,7 @@
 
 import type {
   ActionStep,
+  IntegrationCatalog,
   Json,
   Node,
   Page,
@@ -58,6 +59,15 @@ export interface PageRuntimeOptions {
   realm?: EvalRealm | null;
   /** What a `navigate` step means to the host. See `navigateTo`. */
   onNavigate?: (to: string) => void;
+  /**
+   * The workspace API connections this page's queries may call, with their credentials.
+   *
+   * Supplied by the host — the studio, the preview, a published page — and deliberately
+   * not read from the document, which carries none. Omitted means none are available,
+   * which is both "still loading" and "this viewer's role may not read tokens"; either
+   * way the affected queries report why rather than failing silently.
+   */
+  integrations?: IntegrationCatalog;
 }
 
 export interface PageRuntimeValue {
@@ -105,6 +115,7 @@ export function usePageRuntime({
   props,
   realm,
   onNavigate,
+  integrations,
 }: PageRuntimeOptions): PageRuntimeValue {
   const state = usePageState(page.state);
   const overlays = usePageOverlays();
@@ -122,7 +133,7 @@ export function usePageRuntime({
     [state.values, props, theme],
   );
 
-  const { scope, run } = usePageQueries(page.queries, makeScope, realm);
+  const { scope, run } = usePageQueries(page.queries, makeScope, realm, integrations);
 
   const showToast = useCallback((message: string) => {
     const toast: Toast = { id: (toastCount += 1), message };

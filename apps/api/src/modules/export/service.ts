@@ -1,8 +1,9 @@
-import { projectArchive, type ProjectArchive } from '@ui-builder/codegen';
+import { exportIntegrationsFrom, projectArchive, type ProjectArchive } from '@ui-builder/codegen';
 import type { Db } from '../../db/client.js';
 import type { ProjectAccess } from '../../lib/access.js';
 import { ConflictError } from '../../lib/errors.js';
 import { getDocument } from '../documents/service.js';
+import { listIntegrations } from '../integrations/service.js';
 
 /**
  * The project's code, as a zip — PLAN.md §12, Phase 10.
@@ -27,5 +28,17 @@ export async function exportProject(db: Db, access: ProjectAccess): Promise<Proj
     throw new ConflictError('This project has not been saved yet, so there is nothing to export.');
   }
 
-  return projectArchive(doc);
+  /*
+   * The workspace's connections, so a query that calls a saved endpoint becomes a real
+   * request in the generated code rather than a warning.
+   *
+   * Read here rather than inside codegen, which has no I/O and must not gain any: it is
+   * the same package the studio runs in the browser, and a database read in it would be a
+   * difference between the download and the code panel. No credentials are involved —
+   * `exportIntegrationsFrom` takes summaries, and the export reads its tokens from the
+   * environment.
+   */
+  const integrations = exportIntegrationsFrom(await listIntegrations(db, access));
+
+  return projectArchive(doc, { integrations });
 }

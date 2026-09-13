@@ -16,6 +16,7 @@
 import {
   composeEndpointTemplate,
   type ApiAuth,
+  type ApiIntegrationSummary,
   type IntegrationQuerySource,
   type RequestConnection,
   type RequestEndpoint,
@@ -32,6 +33,50 @@ export interface ExportIntegration {
 
 /** Keyed by integration id, matching how a `QueryDef` references one. */
 export type ExportIntegrations = Readonly<Record<string, ExportIntegration>>;
+
+/**
+ * Builds the generator's view from the API's own summaries.
+ *
+ * Shared by the two callers that generate a project — the API's zip route and the studio's
+ * code panel — because a download and the code shown on screen must be the same bytes, and
+ * this mapping is the one place either could have got it wrong.
+ *
+ * Note what it does not need: a secret. `ApiIntegrationSummary` does not carry one and the
+ * generated code does not want one, because the token becomes an environment variable. So
+ * this is safe to call anywhere the connection list is already loaded.
+ */
+export function exportIntegrationsFrom(
+  summaries: readonly ApiIntegrationSummary[],
+): ExportIntegrations {
+  const out: Record<string, ExportIntegration> = {};
+
+  for (const summary of summaries) {
+    const endpoints: Record<string, RequestEndpoint & { resultPath: string }> = {};
+    for (const endpoint of summary.endpoints) {
+      endpoints[endpoint.id] = {
+        method: endpoint.method,
+        path: endpoint.path,
+        headers: endpoint.headers,
+        body: endpoint.body,
+        resultPath: endpoint.resultPath,
+      };
+    }
+
+    out[summary.id] = {
+      slug: summary.slug,
+      name: summary.name,
+      connection: {
+        baseUrl: summary.baseUrl,
+        auth: summary.auth,
+        defaultHeaders: summary.defaultHeaders,
+        contentType: summary.contentType,
+      },
+      endpoints,
+    };
+  }
+
+  return out;
+}
 
 /**
  * `VITE_` prefixed because that is the only way Vite exposes a variable to client code,

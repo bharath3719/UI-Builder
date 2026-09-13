@@ -32,6 +32,7 @@ import {
   serializeStatePreview,
   serializeTheme,
   symbolIdOf,
+  type IntegrationCatalog,
   type Json,
   type Node,
   type NodeTree,
@@ -554,6 +555,8 @@ export interface PageRendererProps {
   realm?: EvalRealm | null;
   /** Where a `navigate` action goes. See `navigateTo` in `runtime.ts`. */
   onNavigate?: (to: string) => void;
+  /** The workspace API connections this page may call. See `PageRuntimeOptions`. */
+  integrations?: IntegrationCatalog;
 }
 
 /**
@@ -578,8 +581,9 @@ function PageContents({
   cell,
   realm,
   onNavigate,
+  integrations,
 }: PageRendererProps) {
-  const runtime = usePageRuntime({ page, theme, props, realm, onNavigate });
+  const runtime = usePageRuntime({ page, theme, props, realm, onNavigate, integrations });
   const previewed = cell?.nodeId ? page.nodes[cell.nodeId] : undefined;
 
   // The symbols' own rules first, then the page's — so an instance's override, which is a
