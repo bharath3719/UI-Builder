@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Plus, Users } from 'lucide-react';
 import { hasAtLeast, REQUIRES } from '@ui-builder/schema';
 import { keys, useProjects, useWorkspaces } from '../api/queries.js';
 import { formErrorMessage } from '../lib/formErrors.js';
@@ -9,6 +9,7 @@ import { AppBar } from '../shell/AppBar.js';
 import { Button } from '../ui/Button.js';
 import { ScreenLoading, ScreenMessage } from '../ui/Screen.js';
 import { Spinner } from '../ui/Spinner.js';
+import { MembersDialog } from './MembersDialog.js';
 import { NewProjectDialog } from './NewProjectDialog.js';
 import { ProjectCard } from './ProjectCard.js';
 import styles from './WorkspaceRoute.module.css';
@@ -27,6 +28,7 @@ export function WorkspaceRoute() {
   const queryClient = useQueryClient();
 
   const [creating, setCreating] = useState(false);
+  const [managingMembers, setManagingMembers] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
 
   const workspace = workspaces.data?.find((candidate) => candidate.slug === workspaceSlug);
@@ -86,6 +88,14 @@ export function WorkspaceRoute() {
                 {showArchived ? 'Hide archived' : 'Show archived'}
               </Button>
 
+              {/* Offered to every member, not only to admins: a viewer needs to know who
+                  to ask for access, and leaving is something anyone must be able to do
+                  without help. The dialog is what gates the controls inside it. */}
+              <Button variant="ghost" onClick={() => setManagingMembers(true)}>
+                <Users size={14} aria-hidden="true" />
+                Members
+              </Button>
+
               {canCreate && (
                 <Button variant="primary" onClick={() => setCreating(true)}>
                   <Plus size={14} aria-hidden="true" />
@@ -133,6 +143,11 @@ export function WorkspaceRoute() {
       </div>
 
       <NewProjectDialog workspaceId={workspace.id} open={creating} onOpenChange={setCreating} />
+      <MembersDialog
+        workspace={workspace}
+        open={managingMembers}
+        onOpenChange={setManagingMembers}
+      />
     </div>
   );
 }

@@ -1,0 +1,130 @@
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--sp-7) 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  /* Hairlines between rows rather than around each one: a member is a line in a list,
+     not a card (§8). */
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--c-surface);
+}
+
+.row + .row {
+  border-top: 1px solid var(--c-border);
+}
+
+.who {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  /* Lets the email ellipsis rather than pushing the role and the button off the row. */
+  min-width: 0;
+  flex: 1;
+}
+
+.name {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fs-md);
+  color: var(--c-text);
+}
+
+.you {
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-xs);
+  color: var(--c-text-subtle);
+}
+
+.email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.rowError {
+  font-size: var(--fs-sm);
+  color: var(--c-danger);
+}
+
+.role {
+  height: 28px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--c-text);
+}
+
+.role:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 1px;
+}
+
+/* The same width as the select it stands in for, so a list of mixed permissions does
+   not have its rows disagree about where the role column is. */
+.roleStatic {
+  min-width: 76px;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.invite {
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--c-border);
+}
+
+.inviteRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+}
+
+.inviteRow > :first-child {
+  flex: 1;
+}
+
+.inviteRole {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.inviteRoleLabel {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--c-text-muted);
+}
+
+/* The button and the select sit beside a field that carries a label above it and a hint
+   below; without this they float against the field's first line. */
+.inviteRow > .role,
+.inviteRow > button {
+  margin-top: 21px;
+}
+
+.roleHint {
+  margin-top: var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--c-text-subtle);
+}
