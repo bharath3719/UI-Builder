@@ -1,6 +1,9 @@
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import Fastify, { LogController, type FastifyInstance } from 'fastify';
+import { ASSET_MAX_BYTES } from '@ui-builder/schema';
 import { env, isProduction } from './env.js';
+import assetRoutes from './modules/assets/routes.js';
 import authRoutes from './modules/auth/routes.js';
 import documentRoutes from './modules/documents/routes.js';
 import exportRoutes from './modules/export/routes.js';
@@ -11,6 +14,7 @@ import workspaceRoutes from './modules/workspaces/routes.js';
 import authPlugin from './plugins/auth.js';
 import errorsPlugin from './plugins/errors.js';
 import prismaPlugin from './plugins/prisma.js';
+import storagePlugin from './plugins/storage.js';
 
 /**
  * Builds the server without listening, so integration tests can drive it via
@@ -48,8 +52,14 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   await app.register(cors, { origin: env.WEB_ORIGIN, credentials: true });
+  // One file per request and a hard ceiling on it, so a multi-gigabyte body is refused by
+  // the parser rather than read into memory and then rejected by the asset service.
+  await app.register(multipart, {
+    limits: { fileSize: ASSET_MAX_BYTES, files: 1, fields: 4 },
+  });
   await app.register(errorsPlugin);
   await app.register(prismaPlugin);
+  await app.register(storagePlugin);
   await app.register(authPlugin);
 
   await app.register(healthRoutes);
@@ -66,6 +76,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(publishRoutes, { prefix: '/api' });
   // The export hangs off a project id too, and answers with a zip rather than JSON.
   await app.register(exportRoutes, { prefix: '/api' });
+  // Assets hang off a project id, and the upload arrives as multipart rather than JSON.
+  await app.register(assetRoutes, { prefix: '/api' });
 
   return app;
 }

@@ -122,7 +122,12 @@ export interface RequestOptions {
 async function send(path: string, options: RequestOptions): Promise<Response> {
   const headers: Record<string, string> = { accept: 'application/json' };
 
-  if (options.body !== undefined) {
+  // `FormData` is passed through untouched, and deliberately carries no content-type:
+  // the browser has to set it, because only the browser knows the multipart boundary it
+  // is about to generate. Setting one by hand produces a body no server can parse.
+  const isForm = options.body instanceof FormData;
+
+  if (options.body !== undefined && !isForm) {
     headers['content-type'] = 'application/json';
   }
   if (!options.anonymous && accessToken) {
@@ -133,7 +138,9 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
     return await fetch(path, {
       method: options.method ?? 'GET',
       headers,
-      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+      ...(options.body === undefined
+        ? {}
+        : { body: isForm ? (options.body as FormData) : JSON.stringify(options.body) }),
       ...(options.signal ? { signal: options.signal } : {}),
     });
   } catch (cause) {

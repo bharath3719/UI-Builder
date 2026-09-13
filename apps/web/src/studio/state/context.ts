@@ -161,6 +161,14 @@ export interface EditOptions {
 export type EditTarget = { kind: 'page'; id: string } | { kind: 'symbol'; id: string };
 
 export interface StudioState {
+  /**
+   * The project this document belongs to.
+   *
+   * Carried rather than read off `doc.id`, which happens to hold the same value today: the
+   * document is a stored blob that travels — a restore, an import, a fixture — and the
+   * thing an upload has to be filed under is the project the editor was opened on.
+   */
+  projectId: string;
   /** The whole document. `page` is the one being edited; both are the same object graph. */
   doc: ProjectDoc;
   /**

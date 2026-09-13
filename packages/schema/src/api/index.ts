@@ -14,3 +14,4 @@ export * from './workspaces.js';
 export * from './projects.js';
 export * from './documents.js';
 export * from './publish.js';
+export * from './assets.js';

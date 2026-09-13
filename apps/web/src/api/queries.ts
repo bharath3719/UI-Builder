@@ -6,13 +6,17 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import type {
+  AddMemberRequest,
+  AssetSummary,
   CreateProjectRequest,
   CreateWorkspaceRequest,
   ProjectSummary,
+  Role,
   UpdateProjectRequest,
   UpdateWorkspaceRequest,
   WorkspaceSummary,
 } from '@ui-builder/schema';
+import * as assetsApi from './assets.js';
 import { ApiError } from './client.js';
 import * as projectsApi from './projects.js';
 import * as workspacesApi from './workspaces.js';
@@ -26,6 +30,7 @@ export const keys = {
   workspaces: ['workspaces'] as const,
   workspace: (id: string) => ['workspaces', id] as const,
   members: (id: string) => ['workspaces', id, 'members'] as const,
+  assets: (projectId: string) => ['projects', projectId, 'assets'] as const,
   projects: (workspaceId: string, includeArchived: boolean) =>
     ['workspaces', workspaceId, 'projects', { includeArchived }] as const,
   project: (id: string) => ['projects', id] as const,
@@ -112,6 +117,131 @@ export function useUpdateWorkspace(id: string) {
     onSuccess: (workspace: WorkspaceSummary) => {
       client.setQueryData(keys.workspace(workspace.id), workspace);
       void client.invalidateQueries({ queryKey: keys.workspaces });
+    },
+  });
+}
+
+/* ==========================================================================
+   Assets
+   ========================================================================== */
+
+export function useAssets(projectId: string | undefined) {
+  return useQuery({
+    queryKey: keys.assets(projectId ?? ''),
+    queryFn: projectId
+      ? ({ signal }: { signal: AbortSignal }) => assetsApi.listAssets(projectId, signal)
+      : skipToken,
+  });
+}
+
+export function useUploadAsset(projectId: string) {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: (file: File) => assetsApi.uploadAsset(projectId, file),
+    onSuccess: (asset: AssetSummary) => {
+      // Prepended rather than invalidated: the list is ordered newest-first and the server
+      // just told us the new row, so a refetch would be a round trip to learn what is
+      // already in hand — and a picker that flickers between the two orderings.
+      client.setQueryData<AssetSummary[]>(keys.assets(projectId), (current) =>
+        current ? [asset, ...current] : [asset],
+      );
+    },
+  });
+}
+
+export function useDeleteAsset(projectId: string) {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: (assetId: string) => assetsApi.deleteAsset(projectId, assetId),
+    onSuccess: (_result, assetId) => {
+      client.setQueryData<AssetSummary[]>(keys.assets(projectId), (current) =>
+        current?.filter((asset) => asset.id !== assetId),
+      );
+    },
+  });
+}
+
+/* ==========================================================================
+   Members
+   ========================================================================== */
+
+export function useMembers(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: keys.members(workspaceId ?? ''),
+    queryFn: workspaceId
+      ? ({ signal }: { signal: AbortSignal }) => workspacesApi.listMembers(workspaceId, signal)
+      : skipToken,
+  });
+}
+
+/**
+ * The three writes share one `onSuccess`, because they all change the same two things:
+ * the member list, and the `role` the workspace summary carries for the caller.
+ *
+ * That second one is not incidental. A workspace's own `role` is what every screen reads
+ * to decide what to offer — the studio decides whether it is read-only before it renders
+ * (Phase 8) — so demoting yourself and leaving the project grid still showing "New
+ * project" would be a button that 403s. Invalidating both is what keeps the chrome honest.
+ */
+function useMemberMutation<TArgs, TResult>(
+  workspaceId: string,
+  run: (args: TArgs) => Promise<TResult>,
+) {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: run,
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.members(workspaceId) });
+      void client.invalidateQueries({ queryKey: keys.workspaces });
+    },
+  });
+}
+
+export function useAddMember(workspaceId: string) {
+  return useMemberMutation(workspaceId, (input: AddMemberRequest) =>
+    workspacesApi.addMember(workspaceId, input),
+  );
+}
+
+export function useUpdateMemberRole(workspaceId: string) {
+  return useMemberMutation(workspaceId, ({ memberId, role }: { memberId: string; role: Role }) =>
+    workspacesApi.updateMemberRole(workspaceId, memberId, { role }),
+  );
+}
+
+/**
+ * Also how a member leaves: pass their own membership id.
+ *
+ * `onRemoved` is taken here rather than passed to `mutate`, and that is load-bearing.
+ * Leaving a workspace removes it from the caller's list, which makes the screen holding
+ * this dialog decide it is looking at a workspace that no longer exists — so the component
+ * that called `mutate` is gone by the time the request settles, and TanStack skips the
+ * per-call callbacks of an unmounted observer. A mutation-level callback still runs, which
+ * is what gets the leaver somewhere that exists rather than onto "workspace not found".
+ */
+export function useRemoveMember(workspaceId: string, onRemoved?: (memberId: string) => void) {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: (memberId: string) => workspacesApi.removeMember(workspaceId, memberId),
+    onSuccess: async (_result, memberId) => {
+      if (onRemoved) {
+        // Leaving: the member list has stopped being readable, so refetching it would only
+        // produce a 403 to show in the panel that is on its way out. Drop it instead.
+        client.removeQueries({ queryKey: keys.members(workspaceId) });
+      } else {
+        void client.invalidateQueries({ queryKey: keys.members(workspaceId) });
+      }
+
+      // Awaited, and *before* the callback, which is the whole of why this is not two
+      // `void` calls: `/` redirects into the caller's first workspace, so a leaver sent
+      // there while the list still holds the workspace they just left is sent straight
+      // back into it — and lands on "workspace not found" a moment later.
+      await client.invalidateQueries({ queryKey: keys.workspaces });
+      onRemoved?.(memberId);
     },
   });
 }

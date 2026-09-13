@@ -18,6 +18,15 @@ export const ApiErrorCode = z.enum([
   'conflict',
   /** Unexpected. `message` is deliberately generic; the detail is in the server log. */
   'internal_error',
+  /**
+   * The request was fine; this deployment cannot serve it.
+   *
+   * Distinct from `internal_error` because nothing went wrong and retrying will not help
+   * — an operator has to configure something. Asset upload is the first of these: a
+   * checkout with no object storage boots and works, and says this to the one button that
+   * needs a bucket rather than pretending the upload failed.
+   */
+  'unavailable',
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCode>;
 

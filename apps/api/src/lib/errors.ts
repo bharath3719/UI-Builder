@@ -56,3 +56,15 @@ export class ConflictError extends AppError {
     super('conflict', 409, message);
   }
 }
+
+/**
+ * A good request this deployment is not equipped to serve.
+ *
+ * Not a bug and not the caller's fault, so neither `internal_error` nor a 4xx: something
+ * has to be configured before it can work, and the message is what says so.
+ */
+export class UnavailableError extends AppError {
+  constructor(message: string) {
+    super('unavailable', 503, message);
+  }
+}

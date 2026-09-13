@@ -12,8 +12,10 @@
  */
 
 import { useId, useState } from 'react';
+import { Image as ImageIcon } from 'lucide-react';
 import type { PropSpec } from '@ui-builder/components';
 import { readProp, staticProp, type Json, type Node } from '@ui-builder/schema';
+import { AssetPicker } from './AssetPicker.js';
 import { ExpressionField } from '../expressions/ExpressionField.js';
 import { scopeSuggestions } from '../expressions/scope.js';
 import { useStudio } from '../state/context.js';
@@ -168,14 +170,53 @@ function PropField({ node, spec }: { node: Node; spec: PropSpec }) {
     );
   }
 
-  return row(
-    <TextControl
-      id={id}
-      value={text}
-      placeholder={placeholder}
-      onCommit={commit}
-      monospace={spec.type === 'url'}
-    />,
+  // A URL prop is still a text field — an external address is a perfectly good answer and
+  // typing one must stay possible — with the project's own uploads offered beside it.
+  if (spec.type === 'url') {
+    return row(<UrlControl id={id} value={text} placeholder={placeholder} onCommit={commit} />);
+  }
+
+  return row(<TextControl id={id} value={text} placeholder={placeholder} onCommit={commit} />);
+}
+
+function UrlControl({
+  id,
+  value,
+  placeholder,
+  onCommit,
+}: {
+  id: string;
+  value: string;
+  placeholder: string | undefined;
+  onCommit: (text: string) => void;
+}) {
+  const { writable } = useStudio();
+  const [picking, setPicking] = useState(false);
+
+  return (
+    <div className={styles.urlField}>
+      <TextControl id={id} value={value} placeholder={placeholder} onCommit={onCommit} monospace />
+
+      <button
+        type="button"
+        className={styles.urlBrowse}
+        disabled={!writable}
+        title="Choose an uploaded image"
+        aria-label="Choose an uploaded image"
+        onClick={() => setPicking(true)}
+      >
+        <ImageIcon size={13} aria-hidden="true" />
+      </button>
+
+      <AssetPicker
+        open={picking}
+        onOpenChange={setPicking}
+        onPick={(url) => {
+          onCommit(url);
+          setPicking(false);
+        }}
+      />
+    </div>
   );
 }
 

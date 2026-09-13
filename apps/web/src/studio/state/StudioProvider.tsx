@@ -188,6 +188,7 @@ export function StudioProvider({
 
   return (
     <StudioSession
+      projectId={project.id}
       history={history}
       setHistory={setHistory}
       persistence={persistence}
@@ -208,12 +209,14 @@ export function StudioProvider({
  * and what makes an autosave a comparison of two references.
  */
 function StudioSession({
+  projectId,
   history,
   setHistory,
   persistence,
   writable,
   children,
 }: {
+  projectId: string;
   history: History<ProjectDoc>;
   setHistory: React.Dispatch<React.SetStateAction<History<ProjectDoc> | null>>;
   persistence: Persistence;
@@ -620,6 +623,7 @@ function StudioSession({
 
   const value = useMemo(
     () => ({
+      projectId,
       doc,
       page,
       target: surface,
@@ -663,6 +667,7 @@ function StudioSession({
       setDropResolver,
     }),
     [
+      projectId,
       doc,
       page,
       surface,

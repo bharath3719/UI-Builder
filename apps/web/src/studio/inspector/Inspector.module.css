@@ -274,3 +274,45 @@
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-5) var(--sp-5);
 }
+
+/* A URL field and the button that opens the image picker beside it. The button is a
+   square the height of the input, so the row still reads as one control. */
+.urlField {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.urlField > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.urlBrowse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  flex: none;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text-muted);
+  cursor: pointer;
+}
+
+.urlBrowse:hover:not(:disabled) {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.urlBrowse:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.urlBrowse:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 1px;
+}
