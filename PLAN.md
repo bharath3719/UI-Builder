@@ -337,27 +337,27 @@ export type PropSpec =
 
 Shipped components are in **bold**.
 
-| Category    | Components                                                                                                                          |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **Layout**  | **`VStack`**, **`HStack`**, **`Grid`**, **`Box`**, **`Spacer`**, **`Divider`**, **`Header`**, **`Footer`**, **`SideNav`**, `Scroll` |
-| **Basic**   | **`Text`**, **`RichText`**, **`Heading`**, **`Button`**, **`Link`**, `Icon`, **`Badge`**, **`Avatar`**                              |
-| **Form**    | **`Input`**, **`Textarea`**, **`Select`**, **`Checkbox`**, **`Radio`**, **`Switch`**, **`Slider`**, **`DatePicker`**, `Form`        |
-| **Media**   | **`Image`**                                                                                                                         |
-| **Data**    | `List` (repeat), **`Table`**, **`Card`**                                                                                            |
-| **AI**      | **`ChatThread`**, **`ChatMessage`**, **`PromptInput`**, **`TypingIndicator`**, `CodeBlock`, `Citation`, `SourceCard`, `ToolCall`    |
-| **Overlay** | `Modal`, `Drawer`, `Tooltip`, `Tabs`, `Accordion`                                                                                   |
+| Category    | Components                                                                                                                                                |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Layout**  | **`VStack`**, **`HStack`**, **`Grid`**, **`Box`**, **`Spacer`**, **`Divider`**, **`Scroll`**, **`Header`**, **`Footer`**, **`SideNav`**, **`Breadcrumb`** |
+| **Basic**   | **`Text`**, **`RichText`**, **`Heading`**, **`Button`**, **`Link`**, `Icon`, **`Badge`**, **`Avatar`**, **`Alert`**                                       |
+| **Form**    | **`Input`**, **`Textarea`**, **`Select`**, **`Checkbox`**, **`Radio`**, **`Switch`**, **`Slider`**, **`DatePicker`**, `Form`                              |
+| **Media**   | **`Image`**                                                                                                                                               |
+| **Data**    | `List` (repeat), **`Table`**, **`Card`**, **`Progress`**                                                                                                  |
+| **AI**      | **`ChatThread`**, **`ChatMessage`**, **`PromptInput`**, **`TypingIndicator`**, **`CodeBlock`**, **`ToolCall`**, **`Citation`**, **`SourceCard`**          |
+| **Overlay** | **`Modal`**, **`Drawer`**, **`Tabs`**, **`Accordion`**, **`Tooltip`**                                                                                     |
 
 Per D13 the implementations are shadcn's design, not shadcn's source: `Button` takes
 `variant` (`default | secondary | outline | ghost | destructive | link`) and `size`
 (`sm | default | lg | icon`), styled against `--primary`, `--muted-foreground`,
 `--ring` and the rest of the shadcn token set that `serializeTheme` emits.
 
-The compound components (`Tabs`, `Modal`, `Accordion`) are the ones that do not map to
-a single node and will need insert-time subtree templates — the reason they are not in
-the first batches. `Select` shipped ahead of them as a native `<select>` whose options
-are authored as text: a list of choices is data, and editing it in one field beats
-dropping six `Option` nodes. shadcn's compound Select can replace it later without the
-document changing, since the options already live in a prop rather than in children.
+The compound components (`Tabs`, `Modal`, `Accordion`) were parked behind insert-time
+subtree templates and shipped without them, because `Select` had already shown the way
+out: a list of choices is data, and editing it in one field beats dropping six `Option`
+nodes. shadcn's compound Select can replace it later without the document changing,
+since the options already live in a prop rather than in children — and the same is now
+true of a tab strip and an accordion. See the Overlay note below.
 
 `Radio` ships as one node holding the whole group, `Select`'s trade for `Select`'s
 reason: a list of choices is data. It is also what makes the group correct, since radios
@@ -458,8 +458,47 @@ something a `Textarea` beside a `Button` can be styled into. `ChatMessage` autho
 body as a `text` prop for the reason `Select` authors its options as text: a message is a
 paragraph someone types, not a subtree they assemble. Rich assistant output is what a
 later `acceptsChildren` pass is for, and it can be added without any stored document
-changing, since `text` stays the empty-children rendering. `CodeBlock` and the rest of
-the row are the natural next batch.
+changing, since `text` stays the empty-children rendering.
+
+The rest of the row followed it. `CodeBlock` is the frame around a snippet and not a
+highlighter, deliberately: highlighting means shipping a tokenizer and a theme into every
+exported project, and a grammar this library would then own the version of. `ToolCall` is
+a `<details>` whose `status` moves the dot, the word and the border together — `role`'s
+argument applied to the other half of an agent transcript. `Citation` and `SourceCard` are
+one fact at two scales: a numbered reference inline in a sentence, and the same reference
+given a block of its own. `SourceCard` takes the domain as a prop rather than parsing it
+out of the URL, because that parse would have to exist in the component _and_ in `codegen`
+to hold D6, and would be wrong for exactly the cases a designer cares about — a wiki, a
+PDF, a document with no URL at all.
+
+**Overlay** shipped as five single nodes rather than five subtrees, and the two decisions
+that made that possible are worth writing down. First, an overlay renders **in flow** — a
+`Modal` is a dimmed stage with a panel centred in it, a `Drawer` the same with the panel
+pushed into a corner. Pinned to the viewport it would cover the page being designed and
+sit outside every rect the canvas hit-tests against, so it would be a component nobody
+could select; a design that wants it fixed says so in the Design tab, where `position` and
+`inset` land on the same root element. Second, opening and closing was **absent rather than
+faked** until the runtime that can execute it existed (§10); it does now, and `Modal` and
+`Drawer` are the two components the `overlay` flag marks — see "Overlay actions" under
+Phase 12. A modal still never hides itself on the canvas, which was the other half of that
+sentence and is still true. `Tabs`
+authors its labels as text and draws the panel `active` names, so what it does not do —
+switch — is visible rather than mimed. `Accordion` is the one that gets its behaviour for
+free: each row is a native `<details>`, so the exported page opens and closes with no
+JavaScript at all, and the canvas freezes the toggling through the same `interactive` flag
+`Table` uses. `Tooltip` is the same trick with `:hover` and `:focus-within`, and its
+`visible` prop is a real prop rather than an editor flag — a pinned tooltip ships pinned,
+which is D6 rather than a convenience.
+
+`Alert`, `Progress` and `Breadcrumb` came with that batch as the everyday things the table
+was missing. `Alert`'s icon is an empty span the stylesheet fills, so one piece of markup
+covers four states and the export still ships no icon set — the same bundle question
+`Icon` is parked on. `Progress` is a native `<progress>`, `DatePicker`'s trade again: the
+browser owns the control and announces it without an `aria-` prop being typed. Its
+read-out is `value / max` rather than a percentage because dividing is arithmetic, and the
+emit templates are inert data precisely so that they cannot do any. `Breadcrumb` is the
+fourth component to share the `navItems` transform, which is what that transform carrying
+its anchor class was for.
 
 `layout` exists because the inspector has to know how a component arranges its children
 before the canvas has painted, and for `VStack`/`Grid`/`Card` that fact lives in
@@ -568,10 +607,10 @@ is a literal and `navigate to {{ state.next }}` is an expression — edited by t
 control that already edits props. A step names its state variable and its query by
 **id**, so a rename cannot silently break every handler that used it (expressions still
 reference state by name, because expression text is free-form and nothing can rewrite
-it safely — which is what the panel's usage list is for). And `openOverlay`/
-`closeOverlay` are absent until there are overlay components to open: a step kind the
-runtime cannot execute is one the editor would happily let someone author. Adding a
-member later is not a migration, since no stored document can contain one.
+it safely — which is what the panel's usage list is for). `openOverlay`/`closeOverlay`
+name their target by **node id** for the same reason, and arrived once there were overlay
+components to open — see "Overlay actions" under Phase 12. Adding them was not a
+migration, exactly as this paragraph used to predict: no stored document could contain one.
 
 **Render scope** — every expression evaluates against:
 
@@ -1624,6 +1663,201 @@ Notes from doing it, so they are not rediscovered later:
   up, and the panel says how many first — a delete that quietly took three nodes is not an
   honest one. `symbolInstances` is what makes that count knowable before the fact.
 
+#### Overlay actions ✅ done
+
+`Modal`, `Drawer`, `Tabs`, `Tooltip` and `Accordion` shipped as markup with no way to open
+them, because §10 said a step kind the runtime cannot execute is one the editor would
+happily let someone author. The components exist now, so the steps do: `openOverlay` and
+`closeOverlay`, naming their target by **node id** — `ActionStep`'s rule a third time, so
+renaming a modal in the layers tree keeps every handler that opens it.
+
+**`open` is a prop, not an editor flag.** It is where the panel _starts_; the page's
+overlay state is where it has got to. That split is `Tooltip`'s `visible` bargain applied
+to something that moves: the document survives a reload and the state does not, exactly as
+a state variable's `initial` and its current value differ, and codegen writes it as a
+`useState` seeded from the prop so the export opens in the state the preview did (D6).
+
+**The canvas draws a closed overlay anyway**, dimmed and labelled `Closed`, which is the
+false-`showIf` treatment and for the same reason: a modal that vanished because nothing had
+opened it yet is one nobody could select in order to wire up the button that opens it.
+
+**`EmitModule` got its second member, and the bar it set held.** Opening, closing, taking
+focus and dismissing are state and event handlers, which is precisely what the emit
+templates cannot describe — so `Overlay` is a _wrapper_ on `SortableRows`' terms: it draws
+the element the template asked for, carrying the class and attributes the template wrote,
+and everything inside it still comes from that template. The canvas and the export render
+the same elements and differ only in whether the panel can be dismissed. It is written
+twice, and `runtime.test.ts` already asserts the two copies are the same file from the
+first import down.
+
+**Verified three ways**, as Phase 11's codegen was. Six unit tests say what a page becomes
+— the seeded `useState`, a step naming the panel by its layer name rather than its id, the
+updater form so two steps in one handler both land, and a page with no overlay declaring
+nothing (an unused binding is a compile error in the generated project). `npm install &&
+npm run build` inside the emitted `interactiveDoc` says it compiles under `strict`,
+`noUnusedLocals` and `noUnusedParameters`. And a real browser driving the **built export**
+says it works: 10 assertions — a panel whose prop says closed is absent from the DOM rather
+than hidden, a step puts it on the page, it takes focus when it opens, Escape closes it,
+so do the close button and the backdrop, and a `closeOverlay` step _inside_ the panel
+closes the panel it is in. A second browser pass over the studio adds 7 more: a closed
+modal stays on the canvas carrying `Closed`, and the Interactions panel offers both kinds
+with a picker naming the modal. 788 tests, typecheck, lint and the production build pass;
+`demoDoc`'s snapshot is unchanged, which is the proof the phase is additive.
+
+Notes from doing it, so they are not rediscovered later:
+
+- **Dismissability lives in the markup, not in a second prop passed alongside.** `Overlay`
+  reads `data-dismissable` off the attributes the template already wrote, and the backdrop
+  carries `data-close` only when the panel may be dismissed. The alternative — passing it
+  as a prop the way `open` is passed — would put the answer in two places that have to
+  agree, when one of them is already shared by both renderings.
+- **A wrapper must compose the author's handler, not replace it.** `Overlay` needs its own
+  `onClick` to notice a click on `[data-close]`, and a `Modal` with an `onClick` in its
+  events would have spread straight over it. Both `onClick` and `onKeyDown` are pulled out
+  of the rest and called after its own work.
+- **Focus on open, not on mount.** The obvious effect steals the caret on page load for
+  every panel that simply _is_ open, which is most of them. A ref holding the previous
+  value is what makes it fire on the transition only.
+- **The seed's coercion helper cannot be registered while collecting.** `collectOverlays`
+  runs over the whole tree up front so a button above a modal can still name it; registering
+  `truthy` there would leave an import in a project whose only modal turned out to be
+  hidden, and the generated project's own `noUnusedLocals` rejects that. The seed is
+  therefore written at declaration time, for the overlays that were actually emitted.
+- **`instanceof Element` is false inside the canvas iframe** — the Phases 3–6 note, met
+  again. `Overlay`'s click handler duck-types `closest`, and it has to, because the same
+  component runs in the studio's frame and in a stranger's app.
+- **`deleteNode` grew a cascade.** A `closeOverlay` naming a node that is gone is a button
+  that silently does nothing; `removeStateVar` already set the rule and `pruneSteps` was
+  already generic over `NodeTree`, so it is one call.
+
+#### Image upload ✅ done
+
+The `Asset` table has been in the schema since Phase 1 with nothing writing to it, and
+`Image.src` was a URL somebody had to host elsewhere and type in. Uploading is the missing
+half: `POST /api/projects/:id/assets` takes one file, and the inspector's URL fields grow a
+picker beside them.
+
+**The type check is the bytes, not the claim.** `lib/imageInfo.ts` reads the file's own
+header, and that one parse does both jobs — recognising the format _is_ the validation, and
+the same read hands back the dimensions. A declared `Content-Type` is a claim by whoever is
+uploading, so an endpoint that trusts it stores whatever it is sent. SVG is excluded
+permanently rather than pending: it is a document, it can carry script, and serving one from
+an origin that matters is serving script from that origin. Hand-rolled rather than
+`image-size` or `sharp`, for `zip.ts`'s reason — a few dozen lines against formats that have
+not changed in twenty years, against a dependency in the request path of an upload endpoint.
+
+**The bytes go first, then the row.** The other order leaves a row pointing at nothing every
+time an upload fails — a broken image in someone's design that no retry fixes, because as
+far as the database is concerned it worked. This way a failure leaves an orphaned object,
+which costs storage and breaks nothing. Deleting is the mirror, for the mirror's reason.
+
+**Nothing the client typed reaches the object store.** The key is `projects/<projectId>/
+<assetId>.<ext>`, the extension comes from what the bytes turned out to be, and the filename
+is dropped entirely — it is attacker-controlled text and a key is a path.
+
+**A URL is stored in the document, not an asset id.** An id would be smaller, but the
+preview, the exported project and a shared link opened by someone with no account would each
+need a way to resolve one, and the export would ship pointing at this API rather than at the
+image. The cost is that deleting an asset cannot rewrite the nodes that used it, so the
+delete says so before it happens.
+
+**Storage is optional, and the app runs without it.** D9's premise is that this repo needs no
+third-party keys, so a checkout with no bucket boots and works — it just has no upload
+button, and the route answers 503 `unavailable` (a new error code: nothing went wrong, and
+retrying will not help) rather than pretending the upload failed. Half-configured is refused
+at startup, because that is the case that otherwise fails on the first upload someone tries.
+
+**Verified** three ways, and the third has a limit worth stating. 14 integration tests drive
+the routes against a fake driver substituted at `app.storage` — that a script named `.png` is
+refused whatever the request said, that a failed upload writes no row, that a traversal
+filename cannot reach the key, that a viewer may list but not upload, that an id from another
+project is a 404. 13 unit tests cover the header parsing, built from constructed headers
+rather than checked-in files so the awkward cases are expressible — a JPEG whose frame sits
+behind other segments, all three WebP flavours, a Huffman table that must not be mistaken for
+a frame. And a browser drives the whole path — picker, upload, the real AWS SDK, an
+S3-protocol endpoint on the other side of a socket — through to the image rendering on the
+canvas from its stored URL at its true size.
+
+**What that last one does not establish**: anything about AWS itself. Permissions, bucket
+policy, CORS on a real bucket and region routing are untested here, because there was no
+bucket to test them against. The first real deployment is where those are found.
+
+Notes from doing it, so they are not rediscovered later:
+
+- **`app.storage` is a plugin decorator for the reason `app.db` is**: it is the seam a test
+  replaces. A module-level client would have made the routes untestable without credentials
+  and a network, which was the first shape of this and had to be undone.
+- **`FormData` must carry no content-type header.** Only the browser knows the multipart
+  boundary it is about to generate, and setting the header by hand produces a body no server
+  can parse. `client.ts` passes a `FormData` body through untouched for exactly this.
+- **The multipart plugin truncates rather than throwing**, so the size limit is only visible
+  after reading the whole part and asking `file.truncated`. The service checks the size again
+  on the bytes it actually received, which is what would catch a limit changed in one place.
+- **Three parser bounds were wrong and the constructed fixtures are what found them.** A
+  JPEG whose frame is its last segment, an AVIF whose `ispe` ends at the window's edge, and a
+  WebP fixture of my own that had the frame tag the wrong length. A real `.png` fixture would
+  have passed all three.
+
+#### Team roles UI ✅ done
+
+Phase 1 shipped the whole member API — list, add, change role, remove, with the capability
+table behind them — and nothing in the studio ever called four of those five. There was no
+way to invite anyone into a workspace through the product. `MembersDialog` is that way, and
+it is frontend only: no route, no service and no migration changed.
+
+**It offers exactly what the server would allow, and nothing more.** The two permissions are
+different questions and are asked separately, the way `workspaces.ts` asks them: changing a
+role needs `workspaceManage` _and_ outranking the target, so an admin cannot promote anyone
+past themselves and an owner's own row has no select at all; removing needs one or the
+other, because acting on yourself is always allowed — which is what makes "leave this
+workspace" the same control rather than a second one. Roles this viewer does not outrank are
+offered as disabled options rather than omitted, so the ceiling is visible instead of
+mysterious. The server still decides; this only decides what to draw.
+
+**Open to every member, not to admins.** A viewer needs to know who to ask for access, and
+leaving is something nobody should need help with. What the role gates is the invite form
+and the per-row controls.
+
+**Verified** by driving two real accounts through a real browser, 14 assertions: a new
+workspace has one member marked _you_; the owner cannot demote themselves but can still
+leave; an invite by email appears with the role it was sent as; `OWNER` is not on offer to
+an owner inviting someone; a role change sticks; the invited viewer then sees the workspace,
+is not offered **New project**, can still open the member list, is offered no invite form
+and no control over anyone else; and leaving returns them to an index that no longer lists
+it. 788 tests, typecheck, lint, format and the production build pass.
+
+Notes from doing it, so they are not rediscovered later:
+
+- **A member mutation has to invalidate the workspace _list_, not just the member list.**
+  A workspace summary carries the caller's `role`, and that is what every screen reads to
+  decide what to offer — the studio decides whether it is read-only before it renders
+  (Phase 8). Demoting yourself and leaving the project grid still showing **New project**
+  is a button that 403s.
+- **Leaving unmounts the component that asked for it**, because the workspace drops out of
+  the list and the route it was on decides it is looking at something that no longer
+  exists. TanStack skips the per-call callbacks of an unmounted observer, so "where do I go
+  now" cannot be passed to `mutate` — it is an option on the hook, where a mutation-level
+  callback still runs.
+- **And it has to be awaited, which is the part that was actually wrong first.** `/`
+  redirects into the caller's first workspace, so navigating there while the cached list
+  still holds the workspace they just left sends them straight back into it — and then onto
+  "workspace not found" a moment later, once the refetch lands. Found by driving it; the
+  URL simply never changed. The list invalidation is awaited _before_ the callback runs.
+- **A leaver must not refetch the member list.** It has stopped being readable, so an
+  invalidation buys a 403 to display in a panel that is already on its way out. It is
+  dropped instead.
+
+#### Continuous integration ✅ done
+
+`.github/workflows/ci.yml` runs format, lint, typecheck, the suite and the production build
+on every push to `main` and every pull request, against a `postgres:17` service container.
+One job rather than a matrix: every check needs the generated Prisma client, so sharding
+would repeat `npm ci` and `prisma generate` to save less time than that setup costs.
+
+`apps/api/.env` is gitignored and absent on a runner, so every variable `src/env.ts`
+validates arrives from the workflow's `env:` block instead — including a CI-only
+`JWT_SECRET`, which signs tokens for a database destroyed with the runner.
+
 ---
 
 ## 13. Risk register
@@ -1664,6 +1898,21 @@ above. A component is created, built with the same palette a page is, given prop
 twice, configured and styled per placement, edited once so both follow, and exported as a
 real React component that compiles.
 
+~~**Overlay actions.**~~ Done — see its section under Phase 12. `Modal` and `Drawer` open
+and close, on the canvas, in the preview and in the built export.
+
+~~**Team roles UI.**~~ Done — see its section under Phase 12. Phase 1's member API had no
+caller; it has one now, so a workspace can actually be shared with someone.
+
+~~**Image upload.**~~ Done — see its section under Phase 12. The `Asset` table has a writer,
+and `Image.src` can be a file someone dragged in rather than a URL they had to host. Untested
+against a real bucket; see the limit recorded there.
+
+~~**Continuous integration.**~~ Done — `.github/workflows/ci.yml`. The suite, the snapshot
+tests and the build now run on every push and pull request rather than only when someone
+remembers. The Playwright passes are still hand-run: they need a database, a dev server and
+a browser, and folding them in is its own piece of work.
+
 **Next in Phase 12**, in the order they are worth most:
 
 - **Slots.** A component whose props are all values can be configured but not filled, so
@@ -1686,11 +1935,13 @@ Three smaller things are unblocked and worth taking whenever they suit:
   `css.ts` and an `emit` template per component, with `css.test.ts`, `registry.test.ts`
   and codegen's "every component declares one" test already failing the build on the ways
   that can go wrong. `SideNav` is the worked example of the whole shape, including when a
-  component needs a named `codegen` transform of its own. `Icon` is the one that still
-  needs a decision rather than typing — the `icon` PropSpec type waits on settling the
-  icon set, which is a bundle-size call. The compound components (`Tabs`, `Modal`,
-  `Accordion`) still want insert-time subtree templates, which is the one piece of
-  machinery this batch would add.
+  component needs a named `codegen` transform of its own. The Overlay row, the rest of AI,
+  and `Alert`/`Progress`/`Breadcrumb` shipped that way — including the three compound ones,
+  which turned out not to need insert-time subtree templates after all: text-authored data
+  plus one `slot` says what a subtree would have, and says it in a form the inspector can
+  edit. What is left is `Icon`, which needs a decision rather than typing (the `icon`
+  PropSpec type waits on settling the icon set, a bundle-size call), `Form`, which wants an
+  `onSubmit` action to carry, and `List`, which is a `repeat` wearing a component's name.
 - **A bound source prop on a named transform**, which Phase 11's codegen deliberately left
   as a warning rather than an export (see its notes). `options`, `radios` and `navItems`
   are the tractable three: `parseOptions` is fifteen lines of pure data handling, so
