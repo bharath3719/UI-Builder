@@ -28,6 +28,7 @@ import {
   defaultSymbolPropValue,
   deleteSymbol,
   duplicateSymbol,
+  isLocked,
   isValidVarName,
   removeSymbolProp,
   renameSymbol,
@@ -57,7 +58,33 @@ function isOwnEvent(event: React.SyntheticEvent<HTMLElement>): boolean {
 }
 
 export function Components() {
-  const { doc, symbol, target, writable, editDocument, editSymbol, selectPage, page } = useStudio();
+  const {
+    doc,
+    symbol,
+    target,
+    writable,
+    editDocument,
+    editSymbol,
+    selectPage,
+    page,
+    selectedIds,
+    componentFromSelection,
+  } = useStudio();
+
+  /*
+   * The node the command would act on, or undefined.
+   *
+   * The same three conditions `componentFromSelection` checks, read here so the button can
+   * be disabled rather than fail when pressed — one node, not the surface root, not locked.
+   * Duplicating the condition is the cost of saying why the control is off; the command
+   * still re-checks against the document as it is at the moment of the click, which is the
+   * answer that actually decides.
+   */
+  const candidate = selectedIds.length === 1 ? page.nodes[selectedIds[0]!] : undefined;
+  const fromSelection =
+    candidate && candidate.parentId !== null && !isLocked(page, candidate.id)
+      ? candidate
+      : undefined;
 
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -126,10 +153,34 @@ export function Components() {
       </div>
 
       {writable && (
-        <button type="button" className={styles.add} onClick={create}>
-          <Plus size={13} strokeWidth={2} aria-hidden />
-          New component
-        </button>
+        <>
+          <button type="button" className={styles.add} onClick={create}>
+            <Plus size={13} strokeWidth={2} aria-hidden />
+            New component
+          </button>
+
+          {/* The gesture §12 called the one that matters: a card someone has already built
+              and now wants four of. Disabled rather than hidden when the selection cannot
+              become one — a control that disappears reads as a bug, and the title says why
+              it is off. */}
+          <button
+            type="button"
+            className={[styles.add, styles.addPaired].join(' ')}
+            disabled={!fromSelection}
+            title={
+              fromSelection
+                ? `Turn “${fromSelection.name}” into a component, in place`
+                : 'Select a single node on the canvas to turn it into a component'
+            }
+            onClick={() => {
+              const id = componentFromSelection();
+              if (id) editSymbol(id);
+            }}
+          >
+            <ComponentIcon size={13} strokeWidth={2} aria-hidden />
+            Create from selection
+          </button>
+        </>
       )}
 
       {/* Open on the canvas: everything about this one component, under the list it came

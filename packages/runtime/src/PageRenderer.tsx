@@ -17,6 +17,7 @@
 import {
   COMPONENT_CSS,
   EMPTY_CONTAINER_CSS,
+  SLOT_TYPE,
   coerceToProp,
   isDesignTimeControl,
   specFor,
@@ -86,9 +87,28 @@ export interface RenderContext {
    * backstop for a document that arrived with one anyway.
    */
   rendering: readonly string[];
+  /**
+   * What a `Slot` inside this symbol renders — the placement's own content.
+   *
+   * Null on a page, and null inside an instance that was placed with no children, which
+   * are the two cases where a slot falls back to what is inside it. Non-null it carries
+   * the *caller's* context and scope rather than this walk's, because that is what passing
+   * children means: they are the caller's nodes, they belong to the caller's tree, and
+   * their bindings read the caller's state. Rendering them against the symbol's scope
+   * would be the subtlest possible bug — a row inside a card that silently read the card's
+   * props instead of the page's data.
+   */
+  slot: SlotContents | null;
   /** Where expressions compile — the canvas frame's window. See `evaluate.ts`. */
   realm: EvalRealm | null;
   runtime: PageRuntimeValue;
+}
+
+/** The children a placement handed in, and where they came from. See {@link RenderContext.slot}. */
+interface SlotContents {
+  context: RenderContext;
+  scope: RenderScope;
+  childIds: readonly string[];
 }
 
 /**
@@ -256,6 +276,13 @@ function SymbolInstance({
     tree: symbol,
     insideInstance: true,
     rendering: [...context.rendering, symbol.id],
+    // The placement's own content, carried down to whichever `Slot` the symbol contains.
+    // `context` and `scope` are this walk's — the caller's — for the reason `RenderContext.slot`
+    // gives: children belong to whoever wrote them. An instance with none passes null, which
+    // is what makes the slot fall back to what the component was built with, exactly as
+    // `{children ?? (…)}` does in the export (D6).
+    slot:
+      node.children.length > 0 ? { context, scope, childIds: node.children } : null,
   };
 
   // A component sees its props and the theme. Not `state` and not `queries`: those belong
@@ -311,6 +338,48 @@ function NodeInstance({ node, context, scope, inactive, overlay }: InstanceProps
 
   const className = nodeClassName(node.id);
   const spec = specFor(node.type, context.symbols);
+
+  /*
+   * A slot, in its three cases — and in two of them it renders no element at all, which is
+   * the whole of what makes an export wrapper-free (`SlotSpec`).
+   *
+   * 1. Filled: the placement handed in content, so that content renders here, in the tree
+   *    and scope it was written in. This is `{children}` in the generated component.
+   * 2. Empty and shipped: the fallback renders bare — what `{children ?? (…)}` does when
+   *    nothing was passed, so the preview and the export agree (D6).
+   * 3. Empty and editing: falls through to the ordinary path below, which mounts the `Slot`
+   *    component. That box is the only element a slot ever has, it exists so the author can
+   *    select the slot and drop a fallback into it, and it is editor chrome — its rule
+   *    lives in the canvas-only stylesheet. The component being *authored* has no export to
+   *    disagree with, which is why this case can afford an element and the others cannot.
+   */
+  if (node.type === SLOT_TYPE) {
+    const filled = context.slot;
+    if (filled) {
+      return (
+        <>
+          {filled.childIds.map((childId) => (
+            <NodeRenderer
+              key={childId}
+              id={childId}
+              context={filled.context}
+              scope={filled.scope}
+            />
+          ))}
+        </>
+      );
+    }
+
+    if (!context.editing) {
+      return (
+        <>
+          {node.children.map((childId) => (
+            <NodeRenderer key={childId} id={childId} context={context} scope={scope} />
+          ))}
+        </>
+      );
+    }
+  }
 
   // An overlay is on screen when the page's overlay state says so — its own `open` prop
   // only seeds that (see `overlays.ts`). The canvas draws it either way, dimmed and
@@ -619,6 +688,9 @@ function PageContents({
     emptyLabel: emptyLabel ?? 'Drop a component here',
     insideInstance: false,
     rendering: [],
+    // Nothing is being placed into this tree — it is the outermost one. A slot met here is
+    // a slot on the page it was authored on, which shows its fallback and says so.
+    slot: null,
     realm: realm ?? null,
     runtime,
   };

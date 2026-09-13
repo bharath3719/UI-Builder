@@ -6,7 +6,7 @@
  * bytes moved".
  */
 
-import { getSpec, SPECS } from '@ui-builder/components';
+import { getSpec, SLOT_TYPE, SPECS } from '@ui-builder/components';
 import {
   DEFAULT_THEME,
   makeNode,
@@ -37,8 +37,21 @@ describe('templates', () => {
     // The fallback in `walkNode` exists for robustness, not as somewhere to leave a
     // component. Without this, adding a component to the palette would silently export
     // it as a bare tag with none of its classes or attributes.
-    const missing = SPECS.filter((spec) => spec.codegen.emit === undefined).map((spec) => spec.key);
+    //
+    // `Slot` is the one exemption and it is structural rather than an oversight: it is
+    // special-cased into `{children}` before any template is expanded, exactly as a symbol
+    // instance is, so it can never reach the fallback this test guards. The case below is
+    // what holds it to that — an exemption nothing checks is just a hole.
+    const missing = SPECS.filter(
+      (spec) => spec.key !== SLOT_TYPE && spec.codegen.emit === undefined,
+    ).map((spec) => spec.key);
     expect(missing).toEqual([]);
+  });
+
+  test('a slot emits its caller’s children rather than an element of its own', () => {
+    const { tsx } = onePage(SLOT_TYPE);
+    expect(tsx).toContain('{children}');
+    expect(tsx).not.toContain('ub-slot');
   });
 
   test('the root element carries the library class and the node class', () => {

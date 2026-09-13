@@ -11,6 +11,7 @@
  * while the Props tab was open even though the canvas was still obeying them.
  */
 
+import { SLOT_TYPE } from '@ui-builder/components';
 import { STYLE_STATES, type StyleState } from '@ui-builder/schema';
 import { useState } from 'react';
 import { useStudio } from '../state/context.js';
@@ -171,7 +172,21 @@ export function Inspector() {
       </div>
 
       <div className={styles.scroll}>
-        {tab === 'Design' ? <DesignTab /> : null}
+        {/* A slot is a position rather than an element (see `SlotSpec`), so a rule written
+            for it would have no selector to match in the export — it would appear to work
+            on the canvas, where the authoring box is drawn, and silently do nothing once
+            shipped. Saying so beats offering controls that write dead CSS. */}
+        {tab === 'Design' ? (
+          node.type === SLOT_TYPE ? (
+            <p className={styles.empty}>
+              A slot marks where a placement’s content goes and renders no element of its own, so
+              there is nothing here to style. Style what you drop into it, or the container around
+              it.
+            </p>
+          ) : (
+            <DesignTab />
+          )
+        ) : null}
         {/* Keyed by node, and it has to be. A field holds a draft that is only committed
             on blur, and two components can declare a prop of the same name — `text` is
             both a Text's body and a Button's label. Without the key React reuses the

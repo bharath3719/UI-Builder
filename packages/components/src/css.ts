@@ -2516,6 +2516,28 @@ export const EMPTY_CONTAINER_CSS = `
   border-radius: 4px;
 }
 
+/*
+ * A slot, while the component that owns it is being authored.
+ *
+ * This is the one element in the library that exists on the canvas and in no export — a
+ * slot emits its caller's children and renders no box anywhere else (see SlotSpec), so
+ * the rule is here in the editor's sheet rather than in COMPONENT_CSS. Putting it there
+ * would ship it to a stranger's project as dead weight and imply an element that is not
+ * there. No backticks in here: this comment lives inside a template literal, and one
+ * would terminate it — the failure PLAN.md's Phases 3-6 notes record.
+ *
+ * The accent-tinted dashes say "something goes here" rather than "this is empty", which is
+ * the neighbouring rule's job and a different fact. The min-height keeps it droppable when
+ * the author has not put a fallback in it yet.
+ */
+.ub-slot {
+  min-height: 40px;
+  padding: 4px;
+  border: 1px dashed var(--ub-editor-accent, hsl(217 91% 60% / 0.5));
+  border-radius: 4px;
+  background: var(--ub-editor-accent-wash, hsl(217 91% 60% / 0.04));
+}
+
 [data-ub-empty]::after {
   content: attr(data-ub-empty);
   display: flex;

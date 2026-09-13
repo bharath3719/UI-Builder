@@ -13,7 +13,13 @@
  * failure D6 exists to prevent.
  */
 
-import { specFor, type ComponentSpec, type EmitModule } from '@ui-builder/components';
+import {
+  SLOT_TYPE,
+  specFor,
+  symbolAcceptsChildren,
+  type ComponentSpec,
+  type EmitModule,
+} from '@ui-builder/components';
 import {
   isTruthy,
   nodeClassName,
@@ -186,6 +192,14 @@ export interface Walk {
    * reasoning — an unused binding is a compile error in the generated project.
    */
   overlaysUsed: Set<string>;
+  /**
+   * Whether a `Slot` was actually emitted, so the component declares a `children` parameter.
+   *
+   * Tracked as the walk goes rather than read off the tree for `usedStyles`' reason: a slot
+   * inside a hidden subtree emits nothing, and a `children` binding nothing reads is an
+   * unused parameter the generated project's own `noUnusedParameters` rejects.
+   */
+  usesChildren: boolean;
   /** Passed to the root element's `className`. See `ExpandContext.rootExtraClass`. */
   rootExtraClass?: string;
 }
@@ -287,6 +301,7 @@ export function createWalk(init: Partial<Walk> & Pick<Walk, 'tree'>): Walk {
     needsGoTo: false,
     overlays: collectOverlays(init.tree, init.symbols ?? []),
     overlaysUsed: new Set(),
+    usesChildren: false,
     ...(init.rootExtraClass === undefined ? {} : { rootExtraClass: init.rootExtraClass }),
   };
 }
@@ -506,15 +521,57 @@ function instanceAttr(node: Node, symbol: SymbolDef, name: string, walk: Walk): 
 }
 
 /**
- * An instance as `<ProductCard className={…} title="…" />`.
+ * A slot as `{children}`, or `{children ?? (…)}` when the component was built with a
+ * fallback inside it — PLAN.md §12.
  *
- * No children: what is inside a symbol belongs to the symbol, so the instance node has
- * none to emit. The class is the instance's own rules, handed to the component, which
- * wears it on the element its root renders — the wrapper element this avoids would be a
- * box in the middle of someone's layout that exists only because the builder needed
- * somewhere to hang it (see `classAttr` in `expand.ts`).
+ * No element, which is the whole point: this is the position a placement's content is
+ * dropped into, and what a person writing the component by hand would write. The runtime
+ * renders the same three cases with the same absence of a wrapper, so the canvas and the
+ * export agree by construction (`PageRenderer`, and D6).
+ *
+ * A slot's own children are the *fallback* rather than its content, so they are walked
+ * here and not by the caller — and they are walked in this tree, because that is where the
+ * author put them. The content that displaces them belongs to whoever wrote the placement
+ * and is emitted there, by `walkInstance`.
  */
-function walkInstance(node: Node, symbolId: string, walk: Walk): JsxNode | null {
+function walkSlot(node: Node, walk: Walk, statements: string[]): JsxNode | null {
+  walk.usesChildren = true;
+
+  const fallback = node.children.flatMap((childId) => {
+    const child = walkNode(childId, walk, statements);
+    return child ? [child] : [];
+  });
+
+  if (fallback.length === 0) return { kind: 'expr', code: 'children' };
+
+  return {
+    kind: 'fallback',
+    code: 'children',
+    child: fallback.length === 1 ? fallback[0]! : { kind: 'fragment', children: fallback },
+  };
+}
+
+/**
+ * An instance as `<ProductCard className={…} title="…" />`, or with its own content
+ * between the tags when the component has a slot to put it in.
+ *
+ * The class is the instance's own rules, handed to the component, which wears it on the
+ * element its root renders — the wrapper element this avoids would be a box in the middle
+ * of someone's layout that exists only because the builder needed somewhere to hang it
+ * (see `classAttr` in `expand.ts`).
+ *
+ * Children are emitted *here*, in the caller's tree, which is what passing children means:
+ * they are the caller's nodes and their bindings read the caller's state. A component with
+ * no slot is given none — its spec answers `acceptsChildren: false`, so the drag rules
+ * never let any land, and a document that arrived with some would be emitting content the
+ * component has nowhere to render.
+ */
+function walkInstance(
+  node: Node,
+  symbolId: string,
+  walk: Walk,
+  statements: string[],
+): JsxNode | null {
   const target = walk.symbols.find((candidate) => candidate.symbol.id === symbolId);
   if (!target) {
     walk.warnings.push(
@@ -540,7 +597,14 @@ function walkInstance(node: Node, symbolId: string, walk: Walk): JsxNode | null 
     if (attr) attrs.push(attr);
   }
 
-  return element(target.name, attrs);
+  const children = symbolAcceptsChildren(target.symbol)
+    ? node.children.flatMap((childId) => {
+        const child = walkNode(childId, walk, statements);
+        return child ? [child] : [];
+      })
+    : [];
+
+  return element(target.name, attrs, children);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -607,8 +671,10 @@ export function walkNode(
 
   let expanded: JsxNode | null;
 
-  if (symbolId !== null) {
-    expanded = walkInstance(node, symbolId, walk);
+  if (node.type === SLOT_TYPE) {
+    expanded = walkSlot(node, walk, inner);
+  } else if (symbolId !== null) {
+    expanded = walkInstance(node, symbolId, walk, inner);
   } else {
     const children = spec.acceptsChildren
       ? node.children.flatMap((childId) => {

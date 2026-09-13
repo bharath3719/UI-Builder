@@ -48,6 +48,16 @@ export type JsxNode =
   | { kind: 'fragment'; children: JsxNode[] }
   | { kind: 'when'; test: string; child: JsxNode }
   /**
+   * `{children ?? (…)}` — a slot with something behind it (PLAN.md §12).
+   *
+   * Distinct from `when` because the operator is genuinely different and the difference
+   * matters: `&&` renders nothing when the left side is absent, which is the wrong answer
+   * for a component placed with no content — it would collapse to nothing and read as
+   * broken, when what the author built is sitting right there. `??` rather than `||` so a
+   * placement that deliberately passes an empty string or a zero keeps it.
+   */
+  | { kind: 'fallback'; code: string; child: JsxNode }
+  /**
    * `statements` are the handlers of nodes inside this repeat, which cannot be hoisted
    * past it: they close over the `item` this copy was rendered for, and that is exactly
    * how "remove this row" knows which row. An empty list keeps the concise arrow form.
@@ -150,6 +160,16 @@ function printNode(node: JsxNode, depth: number): string[] {
     if (inner.length === 1 && line.length <= PRINT_WIDTH) return [line];
 
     return [`${pad}{${node.test} && (`, ...printNode(node.child, depth + 1), `${pad})}`];
+  }
+
+  if (node.kind === 'fallback') {
+    // `when`'s shape, and it shares the one-line guard for the same reason: taking [0] of a
+    // child that printed across several lines is what silently truncated a `map` once.
+    const inner = printNode(node.child, 0);
+    const line = `${pad}{${node.code} ?? ${inner.join('\n')}}`;
+    if (inner.length === 1 && line.length <= PRINT_WIDTH) return [line];
+
+    return [`${pad}{${node.code} ?? (`, ...printNode(node.child, depth + 1), `${pad})}`];
   }
 
   if (node.kind === 'map') {

@@ -52,6 +52,7 @@ export { ScrollSpec } from './specs/Scroll.js';
 export { SelectSpec } from './specs/Select.js';
 export { SideNavSpec } from './specs/SideNav.js';
 export { SliderSpec } from './specs/Slider.js';
+export { SlotSpec, SLOT_TYPE } from './specs/Slot.js';
 export { SourceCardSpec } from './specs/SourceCard.js';
 export { SpacerSpec } from './specs/Spacer.js';
 export { HStackSpec, VStackSpec } from './specs/Stack.js';

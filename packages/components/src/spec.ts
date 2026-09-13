@@ -83,6 +83,17 @@ export interface ComponentSpec {
   isVoid?: boolean;
 
   /**
+   * Whether this component is only meaningful inside one of the document's own components.
+   *
+   * `Slot` alone: a hole in a page is a hole in something that is never placed inside
+   * anything, so nothing could ever fill it. The palette is where this is enforced rather
+   * than the drop resolver, for `canPlaceSymbol`'s reason one level down — a fact about
+   * the whole surface belongs where the surface is offered, and a drag that cannot land
+   * is worse than an entry that was never shown.
+   */
+  symbolOnly?: boolean;
+
+  /**
    * How the component lays its children out, when its own library CSS decides that
    * rather than the document.
    *

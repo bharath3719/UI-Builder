@@ -55,6 +55,7 @@ import {
   Space,
   Square,
   SquareCheck,
+  SquareDashed,
   Table as TableIcon,
   TextCursorInput,
   ToggleRight,
@@ -97,6 +98,7 @@ import { Scroll } from './Scroll.js';
 import { Select } from './Select.js';
 import { SideNav } from './SideNav.js';
 import { Slider } from './Slider.js';
+import { Slot } from './Slot.js';
 import { SourceCard } from './SourceCard.js';
 import { Spacer } from './Spacer.js';
 import { HStack, VStack } from './Stack.js';
@@ -122,6 +124,9 @@ export const COMPONENTS: Record<string, ComponentType<any>> = {
   Spacer,
   Divider,
   Scroll,
+  // Reached only while a component is being authored — every other render puts the slot's
+  // contents in place of an element. See `Slot.tsx`.
+  Slot,
   Header,
   Footer,
   SideNav,
@@ -220,6 +225,7 @@ export const ICONS: Record<string, LucideIcon> = {
   Space,
   Square,
   SquareCheck,
+  SquareDashed,
   Table: TableIcon,
   TextCursorInput,
   ToggleRight,

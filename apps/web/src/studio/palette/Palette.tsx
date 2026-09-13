@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Search, Square } from 'lucide-react';
 import {
+  SLOT_TYPE,
   createNodeFor,
   getSpec,
   searchSpecs,
@@ -54,15 +55,25 @@ const BOX_SPEC = getSpec('Box');
  * that would make it contain itself. Hiding them is where that rule is enforced: a drag
  * that cannot land is worse than an entry that is not offered, because the indicator would
  * have to explain itself and there is nowhere to say it.
+ *
+ * `Slot` is filtered on the same principle and for two reasons at once. On a page it is
+ * meaningless — a page is never placed inside anything, so nothing could ever fill the
+ * hole. Inside a component that already has one it is refused because slots are one per
+ * component in this pass (PLAN.md §12); offering a second and then having the renderer
+ * quietly pick the first is the kind of silence this palette exists to avoid.
  */
 function placeable(
   doc: ProjectDoc,
   target: EditTarget,
+  surface: Page,
   specs: readonly ComponentSpec[],
 ): ComponentSpec[] {
-  if (target.kind === 'page') return [...specs];
+  const hasSlot = Object.values(surface.nodes).some((node) => node.type === SLOT_TYPE);
 
   return specs.filter((spec) => {
+    if (spec.symbolOnly && (target.kind !== 'symbol' || hasSlot)) return false;
+    if (target.kind === 'page') return true;
+
     const symbolId = symbolIdOf(spec.key);
     return symbolId === null || canPlaceSymbol(doc, symbolId, target.id);
   });
@@ -134,19 +145,19 @@ export function Palette() {
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { doc, target, symbols } = studio;
+  const { doc, target, symbols, page } = studio;
 
   const results = useMemo(
-    () => (query.trim() ? placeable(doc, target, searchSpecs(query, symbols)) : null),
-    [query, doc, target, symbols],
+    () => (query.trim() ? placeable(doc, target, page, searchSpecs(query, symbols)) : null),
+    [query, doc, target, page, symbols],
   );
 
   const groups = useMemo(
     () =>
       specsByCategory(symbols)
-        .map((group) => ({ ...group, specs: placeable(doc, target, group.specs) }))
+        .map((group) => ({ ...group, specs: placeable(doc, target, page, group.specs) }))
         .filter((group) => group.specs.length > 0),
-    [doc, target, symbols],
+    [doc, target, page, symbols],
   );
 
   return (

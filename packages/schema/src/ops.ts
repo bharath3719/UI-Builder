@@ -340,29 +340,39 @@ export function reorder<T extends NodeTree>(
 }
 
 /**
- * Deep-copies a subtree with fresh ids and drops it in directly after the original.
+ * A detached deep copy of a subtree, every node carrying a fresh id.
  *
- * `newId` is injectable so tests can assert on the resulting shape rather than on
- * whatever random ids the copy happened to get.
+ * Detached is the useful part: the copy belongs to no tree yet, so the same function
+ * serves duplicating a node in place, lifting one out into a component of its own
+ * (`symbolFromSelection`), and the clipboard. The ids have to be new wherever it lands,
+ * because a node id becomes a CSS class name (`nodeClassName`) and two nodes sharing one
+ * would share their styling.
+ *
+ * The root of the copy has `parentId: null`, which every caller overwrites as it inserts.
+ *
+ * `newId` is injectable so tests can assert on the resulting shape rather than on whatever
+ * random ids the copy happened to get.
  */
-export function duplicateNode<T extends NodeTree>(
-  tree: T,
+export function copySubtree(
+  tree: NodeTree,
   nodeId: NodeId,
   newId: () => NodeId = createNodeId,
-): T {
-  const node = getNode(tree, nodeId);
-  if (node.parentId === null) fail('the root node cannot be duplicated');
-
+): { nodes: Node[]; rootId: NodeId } {
   const idMap = new Map<NodeId, NodeId>();
   for (const id of [nodeId, ...descendantIds(tree, nodeId)]) idMap.set(id, newId());
 
-  const copies: Node[] = [];
+  const rootId = idMap.get(nodeId);
+  if (rootId === undefined) fail('the copy lost its own root');
+
+  const nodes: Node[] = [];
   for (const [oldId, freshId] of idMap) {
     const source = getNode(tree, oldId);
-    copies.push({
+    nodes.push({
       ...source,
       id: freshId,
-      parentId: source.parentId ? (idMap.get(source.parentId) ?? source.parentId) : null,
+      // A parent outside the copied subtree is not part of the copy, so the root is
+      // detached rather than left pointing at a node the caller may not have.
+      parentId: source.parentId ? (idMap.get(source.parentId) ?? null) : null,
       children: source.children.map((child) => idMap.get(child) ?? child),
       props: { ...source.props },
       styles: cloneJson(source.styles),
@@ -374,12 +384,25 @@ export function duplicateNode<T extends NodeTree>(
     });
   }
 
+  return { nodes, rootId };
+}
+
+/**
+ * Deep-copies a subtree with fresh ids and drops it in directly after the original.
+ */
+export function duplicateNode<T extends NodeTree>(
+  tree: T,
+  nodeId: NodeId,
+  newId: () => NodeId = createNodeId,
+): T {
+  const node = getNode(tree, nodeId);
+  if (node.parentId === null) fail('the root node cannot be duplicated');
+
+  const { nodes, rootId } = copySubtree(tree, nodeId, newId);
   const parent = getNode(tree, node.parentId);
-  const rootId = idMap.get(nodeId);
-  if (rootId === undefined) fail('duplicate lost its own root');
 
   return insertSubtree(tree, {
-    nodes: copies,
+    nodes,
     rootId,
     parentId: parent.id,
     index: parent.children.indexOf(nodeId) + 1,

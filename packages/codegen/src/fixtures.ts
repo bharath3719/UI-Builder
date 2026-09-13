@@ -692,3 +692,93 @@ export function symbolDoc(): ProjectDoc {
     theme: THEME,
   };
 }
+
+/**
+ * Slots — PLAN.md §12. A component you can *fill* rather than only configure.
+ *
+ * Its own fixture rather than an addition to `symbolDoc`, so that both snapshots above it
+ * stay byte-identical: a phase that changes no existing output is additive, and the way to
+ * say so is to leave the evidence where it already is.
+ *
+ * Every case the walk distinguishes is here, because each takes a different branch and
+ * three of them are only wrong in the export:
+ *
+ * - a slot with a fallback, placed *with* content   -> the content wins
+ * - the same component placed with nothing          -> the fallback shows
+ * - a bare slot with no fallback at all             -> plain `{children}`
+ * - content whose bindings read the *caller's* page -> proof children are emitted in the
+ *   tree they were written in, not the one they land in
+ */
+export function slotDoc(): ProjectDoc {
+  const panel = symbol({
+    id: 'sym-panel',
+    name: 'Panel',
+    rootId: 'panel-root',
+    props: [prop('pp1', 'title', 'string', 'Untitled')],
+    nodes: [
+      {
+        id: 'panel-root',
+        type: 'Card',
+        name: 'Card',
+        children: ['panel-title', 'panel-slot'],
+        styles: { base: { default: { display: 'flex', flexDirection: 'column', gap: 8 } } },
+      },
+      { id: 'panel-title', type: 'Heading', bound: { text: '{{ props.title }}' }, props: { level: '3' } },
+      // The fallback: what a placement that passes nothing shows. It is a subtree like any
+      // other, so it can be styled and can read the component's own props.
+      {
+        id: 'panel-slot',
+        type: 'Slot',
+        name: 'Content',
+        children: ['panel-empty'],
+      },
+      { id: 'panel-empty', type: 'Text', props: { text: 'Nothing here yet' } },
+    ],
+  });
+
+  // No fallback, so the emitted component is the bare `{children}` case.
+  const plain = symbol({
+    id: 'sym-plain',
+    name: 'Plain wrap',
+    rootId: 'plain-root',
+    nodes: [
+      { id: 'plain-root', type: 'Box', name: 'Box', children: ['plain-slot'] },
+      { id: 'plain-slot', type: 'Slot', name: 'Content' },
+    ],
+  });
+
+  const home = page(
+    'pg-home',
+    'Home',
+    '/',
+    'root',
+    [
+      { id: 'root', type: 'VStack', name: 'Page', children: ['filled', 'empty', 'wrapped'] },
+      // Filled, and with a binding inside it: `state.name` is the *page's*, which is the
+      // whole point — these children belong to whoever wrote them.
+      {
+        id: 'filled',
+        type: 'symbol:sym-panel',
+        name: 'With content',
+        props: { title: 'Details' },
+        children: ['filled-text', 'filled-button'],
+      },
+      { id: 'filled-text', type: 'Text', bound: { text: 'Signed in as {{ state.name }}' } },
+      { id: 'filled-button', type: 'Button', props: { text: 'Save' } },
+      // Nothing passed: the component's own fallback is what renders.
+      { id: 'empty', type: 'symbol:sym-panel', name: 'Bare', props: { title: 'Empty' } },
+      { id: 'wrapped', type: 'symbol:sym-plain', name: 'Wrapped', children: ['wrapped-text'] },
+      { id: 'wrapped-text', type: 'Text', props: { text: 'Inside the plain wrapper' } },
+    ],
+    { state: [{ id: 'st1', name: 'name', type: 'string', initial: 'Ada' }] },
+  );
+
+  return {
+    schemaVersion: DOC_SCHEMA_VERSION,
+    id: 'doc-slots',
+    name: 'Slot Demo',
+    pages: [home],
+    symbols: [panel, plain],
+    theme: THEME,
+  };
+}

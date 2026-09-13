@@ -273,6 +273,15 @@ export interface StudioState {
    */
   deleteSelected: () => void;
   duplicateSelected: () => void;
+  /**
+   * Turns the one selected node into a reusable component, in place, and returns the id of
+   * the component that was made — or null when the selection cannot become one.
+   *
+   * Unlike its two neighbours this takes a single node rather than the whole selection, and
+   * that is a decision rather than an omission: several siblings would need a root to live
+   * in, and inventing one silently changes the layout. See `symbolFromSelection`.
+   */
+  componentFromSelection: () => string | null;
 
   undo: () => void;
   redo: () => void;

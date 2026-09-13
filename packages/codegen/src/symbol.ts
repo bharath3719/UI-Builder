@@ -128,6 +128,11 @@ export function generateSymbol(
 
   const bindings = [
     ...(usesProps ? symbol.props.map((prop) => `${prop.name} = ${propDefault(prop)}`) : []),
+    // Before `className` because that is the order a reader expects — what the component
+    // renders, then how this one placement is styled. `walk.usesChildren` rather than the
+    // symbol containing a slot, so a slot inside a hidden subtree declares nothing: the
+    // generated project sets `noUnusedParameters`.
+    ...(walk.usesChildren ? ['children'] : []),
     'className',
   ];
 
@@ -147,6 +152,9 @@ export function generateSymbol(
 
   const react = [
     ...(overlays ? ['useState'] : []),
+    // `ReactNode` annotates the children a slot receives. A type import among value
+    // imports, which is what the sorted `type X` members beside it already are.
+    ...(walk.usesChildren ? ['type ReactNode'] : []),
     ...[...walk.eventTypes].sort().map((type) => `type ${type}`),
   ];
   if (react.length > 0) lines.push(`import { ${react.join(', ')} } from 'react';`);
@@ -187,6 +195,12 @@ export function generateSymbol(
   /* The props interface. */
   const fields = [
     ...symbol.props.map((prop) => `  ${propKey(prop)}?: ${propType(prop)};`),
+    ...(walk.usesChildren
+      ? [
+          '  /** What this placement puts in the slot. Omitted, the component’s own fallback shows. */',
+          '  children?: ReactNode;',
+        ]
+      : []),
     '  /** The one placement’s own styling, from whichever page or component placed it. */',
     '  className?: string;',
   ];

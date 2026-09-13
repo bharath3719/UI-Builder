@@ -1,7 +1,13 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { createNodeFor, createProjectDoc, specFor } from '@ui-builder/components';
+import {
+  createNodeFor,
+  createProjectDoc,
+  specFor,
+  symbolFromSelection,
+} from '@ui-builder/components';
 import {
   REQUIRES,
+  addSymbol,
   canMoveInto,
   canPlaceSymbol,
   deleteNode,
@@ -136,6 +142,39 @@ function resolveSurface(doc: ProjectDoc, target: EditTarget, pageId: string): Su
 
   const page = activePage(doc, pageId);
   return { target: { kind: 'page', id: page.id }, page, symbol: null };
+}
+
+/**
+ * A `schema/ops` transform written back into whichever surface is open.
+ *
+ * The two modules speak different units — `ops.ts` takes a `Page`, `pages.ts` takes a
+ * `ProjectDoc` — and this is the seam between them. It is a plain function rather than part
+ * of `editDoc` because two callers need it now: every ordinary edit, and the commands that
+ * change the document *and* the open tree in one step, which must be one entry in the undo
+ * stack rather than two.
+ *
+ * Only the tree half of a symbol's result is kept. A symbol has no state, queries or path,
+ * and the panels that write those are not reachable while one is open — so this is where the
+ * page view stops being a page again, in the one place that knows it ever was one.
+ */
+function writeSurface(
+  doc: ProjectDoc,
+  target: EditTarget,
+  pageId: string,
+  transform: (page: Page) => Page,
+): ProjectDoc {
+  const surface = resolveSurface(doc, target, pageId);
+
+  if (surface.target.kind === 'page') {
+    return updatePage(doc, surface.page.id, transform);
+  }
+
+  return updateSymbol(doc, surface.target.id, (held) => {
+    const next = transform(symbolAsPage(held));
+    return next.nodes === held.nodes && next.rootId === held.rootId
+      ? held
+      : { ...held, rootId: next.rootId, nodes: next.nodes };
+  });
 }
 
 /**
@@ -316,24 +355,7 @@ function StudioSession({
    */
   const editDoc = useCallback(
     (transform: (page: Page) => Page, options?: EditOptions) => {
-      editDocument((current) => {
-        const surface = resolveSurface(current, editTarget, pageId);
-
-        if (surface.target.kind === 'page') {
-          return updatePage(current, surface.page.id, transform);
-        }
-
-        // Only the tree half of the result is kept. A symbol has no state, queries or path,
-        // and the panels that write those are not reachable while one is open — so this is
-        // where the page view stops being a page again, in the one place that knows it
-        // ever was one.
-        return updateSymbol(current, surface.target.id, (held) => {
-          const next = transform(symbolAsPage(held));
-          return next.nodes === held.nodes && next.rootId === held.rootId
-            ? held
-            : { ...held, rootId: next.rootId, nodes: next.nodes };
-        });
-      }, options);
+      editDocument((current) => writeSurface(current, editTarget, pageId, transform), options);
     },
     [editDocument, editTarget, pageId],
   );
@@ -526,6 +548,137 @@ function StudioSession({
     );
   }, [editDoc, selectedIds]);
 
+  /**
+   * Copy, cut and paste — PLAN.md §12.
+   *
+   * The clipboard is the studio's own rather than the system's, and that is a deliberate
+   * limit. Reading the system clipboard needs a permission prompt in some browsers and
+   * returns nothing at all in others, so a paste that silently did nothing would be the
+   * common case; and what is being carried is a subtree of a document, which is meaningless
+   * to every other application. What this buys is the thing people actually want — copying
+   * a card from one page and pasting it on another, or into a component — and it works with
+   * no prompt and no failure mode.
+   *
+   * It holds *detached* trees rather than node ids. A reference would dangle the moment the
+   * original was deleted, which is precisely what cut does.
+   */
+  const [clipboard, setClipboard] = useState<readonly NodeTree[] | null>(null);
+
+  const copySelected = useCallback((): number => {
+    // Topmost only, exactly as delete and duplicate are: with a stack and its child both
+    // selected, copying the stack already carries the child, and pasting both would put a
+    // second copy of the child beside the one inside the stack.
+    const ids = topmostNodes(page, selectedIds).filter(
+      (id) => page.nodes[id]?.parentId !== null && page.nodes[id] !== undefined,
+    );
+    if (ids.length === 0) return 0;
+
+    setClipboard(
+      ids.map((id) => {
+        const { nodes, rootId } = copySubtree(page, id);
+        return { rootId, nodes: Object.fromEntries(nodes.map((node) => [node.id, node])) };
+      }),
+    );
+    return ids.length;
+  }, [page, selectedIds]);
+
+  const cutSelected = useCallback((): number => {
+    const copied = copySelected();
+    if (copied > 0) deleteSelected();
+    return copied;
+  }, [copySelected, deleteSelected]);
+
+  /**
+   * Pastes beside the selection, or inside it when the selection can hold children — the
+   * same rule the palette inserts by, so "add another one of these" means one thing in the
+   * studio rather than two.
+   *
+   * Fresh ids are minted here rather than in the updater, which may run twice: the second
+   * run would produce a different set and leave the selection pointing at nodes the
+   * committed document does not contain. It also means pasting twice gives two independent
+   * subtrees, which is what the stored copy being a throwaway snapshot is for.
+   */
+  const pasteClipboard = useCallback((): number => {
+    if (!clipboard || clipboard.length === 0) return 0;
+
+    const selected = selectedId ? page.nodes[selectedId] : undefined;
+    const into = (() => {
+      if (!selected) return { parentId: page.rootId, index: undefined as number | undefined };
+      if (boundSpecFor(selected.type)?.acceptsChildren) {
+        return { parentId: selected.id, index: undefined as number | undefined };
+      }
+      const parent = selected.parentId ? page.nodes[selected.parentId] : undefined;
+      if (!parent) return { parentId: page.rootId, index: undefined as number | undefined };
+      return { parentId: parent.id, index: parent.children.indexOf(selected.id) + 1 };
+    })();
+
+    const copies = clipboard.map((tree) => copySubtree(tree, tree.rootId));
+
+    editDoc((open) => {
+      if (!open.nodes[into.parentId]) return open;
+      return copies.reduce(
+        (current, copy, offset) =>
+          insertSubtree(current, {
+            nodes: copy.nodes,
+            rootId: copy.rootId,
+            parentId: into.parentId,
+            // Each lands after the one before it, so a multi-node paste keeps the order it
+            // was copied in rather than arriving reversed.
+            ...(into.index === undefined ? {} : { index: into.index + offset }),
+          }),
+        open,
+      );
+    });
+
+    selectMany(copies.map((copy) => copy.rootId));
+    return copies.length;
+  }, [clipboard, page, selectedId, boundSpecFor, editDoc, selectMany]);
+
+  /**
+   * Turns the selected node into a reusable component, in place — PLAN.md §12.
+   *
+   * One node only. Several siblings would need a root to live in, and inventing a `Box` to
+   * be that root silently changes the layout: three rows that were flex children of the
+   * page become one flex child holding three. `symbolFromSelection` refuses, and the panel
+   * offering the command reads the same condition so that it is disabled rather than
+   * failing when pressed.
+   *
+   * Built outside the updater, because an updater may run twice and the second run would
+   * mint a different id — the same reason `create` in the Components panel does it, and the
+   * reason `symbolFromSelection` hands back detached halves. Everything is then committed in
+   * a *single* `editDocument`, so adding the component and replacing what it was made from
+   * is one step to undo rather than two.
+   */
+  const componentFromSelection = useCallback(() => {
+    if (selectedIds.length !== 1) return null;
+    const nodeId = selectedIds[0]!;
+
+    const node = page.nodes[nodeId];
+    if (!node || node.parentId === null || isLocked(page, nodeId)) return null;
+
+    const built = symbolFromSelection(doc, page, nodeId);
+
+    editDocument((current) =>
+      writeSurface(addSymbol(current, built.symbol), editTarget, pageId, (open) => {
+        const held = open.nodes[nodeId];
+        if (!held || held.parentId === null) return open;
+
+        // Read from the document as it is now rather than from the render, and take the
+        // position *before* the delete — afterwards the index would be one short whenever
+        // the node was not last.
+        const index = open.nodes[held.parentId]?.children.indexOf(nodeId) ?? 0;
+        return insertNode(deleteNode(open, nodeId), {
+          node: built.instance,
+          parentId: held.parentId,
+          index,
+        });
+      }),
+    );
+
+    select(built.instance.id);
+    return built.symbol.id;
+  }, [doc, page, selectedIds, editDocument, editTarget, pageId, select]);
+
   const beginDrag = useCallback(
     (source: DragSource, label: string, x: number, y: number) => {
       setDragState({ source, label, x, y, target: resolveDropAt(x, y, source) });
@@ -669,6 +822,7 @@ function StudioSession({
       adoptDoc,
       deleteSelected,
       duplicateSelected,
+      componentFromSelection,
       setStyle,
       setProp,
       beginDrag,
@@ -709,6 +863,7 @@ function StudioSession({
       adoptDoc,
       deleteSelected,
       duplicateSelected,
+      componentFromSelection,
       setStyle,
       setProp,
       beginDrag,

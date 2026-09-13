@@ -11,7 +11,7 @@
 import { makeNode, makePage, makeSymbol, symbolType, type ProjectDoc } from '@ui-builder/schema';
 import { describe, expect, test } from 'vitest';
 import { DEFAULT_THEME } from '@ui-builder/schema';
-import { demoDoc, symbolDoc } from './fixtures.js';
+import { demoDoc, slotDoc, symbolDoc } from './fixtures.js';
 import { generateProject, type VirtualFile } from './project.js';
 
 function fileAt(files: VirtualFile[], path: string): string {
@@ -179,5 +179,64 @@ describe('a component with nothing to render', () => {
 
     expect(component).toContain('export function Empty(_props: EmptyProps) {');
     expect(component).toContain('return null;');
+  });
+});
+
+/**
+ * Slots — PLAN.md §12.
+ *
+ * The snapshot is the first of the three checks this file's header names: it says what a
+ * component with a slot *becomes*, which is the thing every user's export inherits.
+ */
+describe('a component with a slot', () => {
+  const files = generateProject(slotDoc()).files;
+  const panel = fileAt(files, 'src/components/Panel.tsx');
+  const plain = fileAt(files, 'src/components/PlainWrap.tsx');
+  const home = fileAt(files, 'src/pages/Home.tsx');
+
+  test('takes children and falls back to what it was built with', () => {
+    // `??` and not `&&`: a placement that passes nothing has to show the fallback, not
+    // collapse to nothing. That is the whole difference between this and a `showIf`.
+    // No trailing paren asserted: a fallback that fits stays on one line, which is the
+    // printer's own rule and worth keeping rather than pinning the exploded form.
+    expect(panel).toContain('{children ?? ');
+    expect(panel).toContain('children?: ReactNode;');
+    expect(panel).toContain("import { type ReactNode } from 'react';");
+  });
+
+  test('emits a bare pass-through when there is no fallback', () => {
+    expect(plain).toContain('{children}');
+    expect(plain).not.toContain('??');
+  });
+
+  test('declares no children on a component that has no slot', () => {
+    // The other half of the contract: `usesChildren` is tracked rather than assumed, and
+    // the generated project's `noUnusedParameters` is what would fail on a spare binding.
+    const card = fileAt(generateProject(symbolDoc()).files, 'src/components/ProductCard.tsx');
+    expect(card).not.toContain('children');
+  });
+
+  test('renders no element of its own — the slot is a hole, not a box', () => {
+    // The canvas draws an authoring box for a slot; the export must not, or every
+    // placement would carry a div nobody asked for. `ub-slot` is styled in the editor-only
+    // sheet precisely so that it cannot reach here, and this is what says so.
+    expect(panel).not.toContain('ub-slot');
+    expect(files.find((file) => file.path === 'src/library.css')?.contents).not.toContain(
+      'ub-slot',
+    );
+  });
+
+  test('emits a placement’s children in the tree they were written in', () => {
+    // The subtle one. These children live on the page, so their bindings read the *page's*
+    // state — rendering them against the component's scope would be a silent wrong answer
+    // rather than an error.
+    expect(home).toContain('state.name');
+    expect(panel).not.toContain('state.name');
+  });
+
+  test('matches its snapshot', () => {
+    expect(panel).toMatchSnapshot('Panel.tsx');
+    expect(plain).toMatchSnapshot('PlainWrap.tsx');
+    expect(home).toMatchSnapshot('Home.tsx');
   });
 });

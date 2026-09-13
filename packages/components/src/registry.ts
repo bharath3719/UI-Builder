@@ -57,6 +57,7 @@ import { ScrollSpec } from './specs/Scroll.js';
 import { SelectSpec } from './specs/Select.js';
 import { SideNavSpec } from './specs/SideNav.js';
 import { SliderSpec } from './specs/Slider.js';
+import { SlotSpec } from './specs/Slot.js';
 import { SourceCardSpec } from './specs/SourceCard.js';
 import { SpacerSpec } from './specs/Spacer.js';
 import { HStackSpec, VStackSpec } from './specs/Stack.js';
@@ -81,6 +82,10 @@ export const SPECS: readonly ComponentSpec[] = [
   SpacerSpec,
   DividerSpec,
   ScrollSpec,
+  // Last of the plain containers, and offered only while a component is open — see
+  // `symbolOnly`. It sits here rather than at the top of the group because reaching for a
+  // slot is something you do once a component already has a shape.
+  SlotSpec,
   // The page chrome, in the order someone reaches for it: nearly every page has a
   // header, most have a footer, and a side nav is an app-shell decision.
   HeaderSpec,

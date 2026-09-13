@@ -1,5 +1,86 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`a component with a slot > matches its snapshot > Home.tsx 1`] = `
+"import { useState } from 'react';
+import { text } from '../lib/values';
+import { Panel } from '../components/Panel';
+import { PlainWrap } from '../components/PlainWrap';
+
+export function Home() {
+  const [state] = useState<Record<string, any>>({ name: 'Ada' });
+
+  return (
+    <div
+      className="ub-stack"
+      data-direction="vertical"
+      data-gap="4"
+      data-align="stretch"
+      data-justify="start"
+    >
+      <Panel title="Details">
+        <p className="ub-text" data-size="base" data-tone="default">
+          {\`Signed in as \${text(state.name)}\`}
+        </p>
+        <button className="ub-button" type="button" data-variant="default" data-size="default">
+          Save
+        </button>
+      </Panel>
+      <Panel title="Empty" />
+      <PlainWrap>
+        <p className="ub-text" data-size="base" data-tone="default">Inside the plain wrapper</p>
+      </PlainWrap>
+    </div>
+  );
+}
+"
+`;
+
+exports[`a component with a slot > matches its snapshot > Panel.tsx 1`] = `
+"import { type ReactNode } from 'react';
+import { cx, text } from '../lib/values';
+
+import styles from './Panel.module.css';
+
+export interface PanelProps {
+  title?: string;
+  /** What this placement puts in the slot. Omitted, the component’s own fallback shows. */
+  children?: ReactNode;
+  /** The one placement’s own styling, from whichever page or component placed it. */
+  className?: string;
+}
+
+export function Panel({ title = 'Untitled', children, className }: PanelProps) {
+  const props = { title };
+
+  return (
+    <div className={cx('ub-card', styles['ub-n-panel-root'], className)}>
+      <h3 className="ub-heading" data-level="3">{text(props.title, 'Heading')}</h3>
+      {children ?? <p className="ub-text" data-size="base" data-tone="default">Nothing here yet</p>}
+    </div>
+  );
+}
+"
+`;
+
+exports[`a component with a slot > matches its snapshot > PlainWrap.tsx 1`] = `
+"import { type ReactNode } from 'react';
+import { cx } from '../lib/values';
+
+export interface PlainWrapProps {
+  /** What this placement puts in the slot. Omitted, the component’s own fallback shows. */
+  children?: ReactNode;
+  /** The one placement’s own styling, from whichever page or component placed it. */
+  className?: string;
+}
+
+export function PlainWrap({ children, className }: PlainWrapProps) {
+  return (
+    <div className={cx('ub-box', className)}>{children}</div>
+  );
+}
+"
+`;
+
 exports[`a document with components > a component that places another component 1`] = `
 "import { cx, pick, text } from '../lib/values';
 
