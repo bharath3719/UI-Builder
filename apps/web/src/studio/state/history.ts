@@ -48,6 +48,17 @@ export interface PushOptions {
    * for an edit that is always its own step — a drop, a delete, a paste.
    */
   coalesce?: string;
+  /**
+   * Merge on the key alone, ignoring {@link COALESCE_MS}.
+   *
+   * For a gesture that knows its own beginning and end — a pointer held down. The timer
+   * exists to guess where one gesture stopped and the next began, and a drag does not have
+   * to guess: pausing halfway through to look at what you have done is still the same drag,
+   * and it would otherwise land on the wrong side of a 700ms boundary and become two undo
+   * steps. Only safe *because* the pointer delimits it; a keyboard repeat has no such end
+   * and must keep the timer.
+   */
+  sustained?: boolean;
   /** Injectable for tests; defaults to now. */
   at?: number;
 }
@@ -74,7 +85,7 @@ export function pushHistory<T>(
     options.coalesce !== undefined &&
     history.lastEdit !== undefined &&
     history.lastEdit.key === options.coalesce &&
-    at - history.lastEdit.at < COALESCE_MS;
+    (options.sustained === true || at - history.lastEdit.at < COALESCE_MS);
 
   if (merges) {
     // Replace the present in place: the step already on the stack is the one that

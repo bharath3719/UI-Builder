@@ -13,6 +13,7 @@ import { canDrag } from '../dnd/rules.js';
 import { CanvasFrame } from './CanvasFrame.js';
 import { isMarquee, marqueeRect, nodesInMarquee } from './marquee.js';
 import { dragLabel, resolveDrop } from './resolveDrop.js';
+import { SpacingHandles } from './SpacingHandles.js';
 import { useViewportGestures } from './useViewportGestures.js';
 import {
   ARTBOARD_SIZE,
@@ -95,6 +96,7 @@ export function Canvas() {
     cell,
     artboardWidth,
     workspaceId,
+    writable,
     select,
     hover,
   } = studio;
@@ -425,6 +427,18 @@ export function Canvas() {
   // frame must neither hit-test nor set the cursor.
   const frameInert = drag !== null || panning || panReady || band !== null;
 
+  /**
+   * The node whose spacing handles are showing, or null.
+   *
+   * One node only — see `SpacingHandles`, which explains why a gesture drawn on one
+   * element must not write to five. A locked node is excluded on the canvas's own rule:
+   * a lock means the canvas does not edit it, and dragging its padding plainly would.
+   */
+  const spacingTarget =
+    writable && !frameInert && selectedIds.length === 1 && selectedId && !isLocked(page, selectedId)
+      ? (selectionRects.find((placed) => placed.id === selectedId) ?? null)
+      : null;
+
   return (
     <div
       ref={areaRef}
@@ -542,6 +556,14 @@ export function Canvas() {
           labelled={!drag && placed.id === selectedId}
         />
       ))}
+
+      {/* Spacing handles, on one node at a time. Suppressed whenever the pointer already
+          belongs to something else — mid-drag, mid-band, mid-pan — so the bands cannot
+          swallow a gesture that was aimed past them, and on a locked node, which is the
+          same rule the canvas applies to selection. */}
+      {spacingTarget && doc ? (
+        <SpacingHandles nodeId={spacingTarget.id} rect={spacingTarget.rect} doc={doc} />
+      ) : null}
 
       {band ? <div className={styles.marquee} style={rectStyle(band)} aria-hidden /> : null}
     </div>

@@ -281,8 +281,7 @@ function SymbolInstance({
     // gives: children belong to whoever wrote them. An instance with none passes null, which
     // is what makes the slot fall back to what the component was built with, exactly as
     // `{children ?? (…)}` does in the export (D6).
-    slot:
-      node.children.length > 0 ? { context, scope, childIds: node.children } : null,
+    slot: node.children.length > 0 ? { context, scope, childIds: node.children } : null,
   };
 
   // A component sees its props and the theme. Not `state` and not `queries`: those belong

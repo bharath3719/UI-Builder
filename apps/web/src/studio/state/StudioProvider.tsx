@@ -10,12 +10,14 @@ import {
   addSymbol,
   canMoveInto,
   canPlaceSymbol,
+  copySubtree,
   deleteNode,
   duplicateNode,
   findPage,
   findSymbol,
   hasAtLeast,
   insertNode,
+  insertSubtree,
   isLocked,
   moveNode,
   moveNodes,
@@ -26,6 +28,7 @@ import {
   updatePage,
   updateSymbol,
   type NodeId,
+  type NodeTree,
   type Page,
   type ProjectDoc,
   type PropValue,
@@ -338,7 +341,13 @@ function StudioSession({
       setHistory((current) => {
         if (!current) return current;
         const next = transform(current.present);
-        return pushHistory(current, next, options.coalesce ? { coalesce: options.coalesce } : {});
+        return pushHistory(
+          current,
+          next,
+          options.coalesce
+            ? { coalesce: options.coalesce, ...(options.sustained ? { sustained: true } : {}) }
+            : {},
+        );
       });
     },
     [setHistory, writable],
@@ -475,7 +484,7 @@ function StudioSession({
    * between two writes starts a new one, which is the honest boundary.
    */
   const setStyle = useCallback(
-    (decls: Record<string, string | number | undefined>) => {
+    (decls: Record<string, string | number | undefined>, options: { sustained?: boolean } = {}) => {
       if (selectedIds.length === 0) return;
       editDoc(
         (existing) =>
@@ -493,6 +502,7 @@ function StudioSession({
           )
             .sort()
             .join(',')}`,
+          ...(options.sustained ? { sustained: true } : {}),
         },
       );
     },
@@ -604,7 +614,9 @@ function StudioSession({
     const selected = selectedId ? page.nodes[selectedId] : undefined;
     const into = (() => {
       if (!selected) return { parentId: page.rootId, index: undefined as number | undefined };
-      if (boundSpecFor(selected.type)?.acceptsChildren) {
+      // `specFor` directly rather than the memoised `boundSpecFor`, which is declared
+      // further down: this is one call on a click, not a per-render lookup.
+      if (specFor(selected.type, doc.symbols)?.acceptsChildren) {
         return { parentId: selected.id, index: undefined as number | undefined };
       }
       const parent = selected.parentId ? page.nodes[selected.parentId] : undefined;
@@ -632,7 +644,7 @@ function StudioSession({
 
     selectMany(copies.map((copy) => copy.rootId));
     return copies.length;
-  }, [clipboard, page, selectedId, boundSpecFor, editDoc, selectMany]);
+  }, [clipboard, doc.symbols, page, selectedId, editDoc, selectMany]);
 
   /**
    * Turns the selected node into a reusable component, in place — PLAN.md §12.
@@ -823,6 +835,10 @@ function StudioSession({
       deleteSelected,
       duplicateSelected,
       componentFromSelection,
+      copySelected,
+      cutSelected,
+      pasteClipboard,
+      canPaste: clipboard !== null && clipboard.length > 0,
       setStyle,
       setProp,
       beginDrag,
@@ -864,6 +880,10 @@ function StudioSession({
       deleteSelected,
       duplicateSelected,
       componentFromSelection,
+      copySelected,
+      cutSelected,
+      pasteClipboard,
+      clipboard,
       setStyle,
       setProp,
       beginDrag,

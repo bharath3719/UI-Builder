@@ -145,6 +145,11 @@ export interface EditOptions {
    * that is always its own decision — a drop, a delete, a rename.
    */
   coalesce?: string;
+  /**
+   * Drop the "in quick succession" part and merge on the key alone — for a gesture whose
+   * end is known, which is to say one the pointer is holding open. See `PushOptions`.
+   */
+  sustained?: boolean;
 }
 
 /**
@@ -282,6 +287,18 @@ export interface StudioState {
    * in, and inventing one silently changes the layout. See `symbolFromSelection`.
    */
   componentFromSelection: () => string | null;
+  /**
+   * The studio's own clipboard — PLAN.md §12. Each returns how many nodes it acted on, so a
+   * caller can say what happened without re-deriving the selection.
+   *
+   * Not the system clipboard, deliberately: reading that needs a permission prompt in some
+   * browsers and returns nothing in others, and a subtree of a document means nothing to
+   * any other application. See `copySelected`.
+   */
+  copySelected: () => number;
+  cutSelected: () => number;
+  pasteClipboard: () => number;
+  canPaste: boolean;
 
   undo: () => void;
   redo: () => void;
@@ -301,8 +318,15 @@ export interface StudioState {
    * Writes declarations into the active cell for every selected node. `undefined`
    * clears a property, which is how a field resets to whatever it inherits rather
    * than pinning an explicit value.
+   *
+   * `options` overrides how the write joins the undo stack. It exists for the canvas's
+   * spacing drag, which streams writes for as long as the pointer is down and wants all of
+   * them to be the one step the user thinks they took — see `EditOptions.sustained`.
    */
-  setStyle: (decls: Record<string, string | number | undefined>) => void;
+  setStyle: (
+    decls: Record<string, string | number | undefined>,
+    options?: Pick<EditOptions, 'sustained'>,
+  ) => void;
   /**
    * Writes one prop on every selected node of the primary's component type;
    * `undefined` removes it. The type check is not a formality — `variant` on a Button

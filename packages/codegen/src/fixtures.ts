@@ -723,7 +723,12 @@ export function slotDoc(): ProjectDoc {
         children: ['panel-title', 'panel-slot'],
         styles: { base: { default: { display: 'flex', flexDirection: 'column', gap: 8 } } },
       },
-      { id: 'panel-title', type: 'Heading', bound: { text: '{{ props.title }}' }, props: { level: '3' } },
+      {
+        id: 'panel-title',
+        type: 'Heading',
+        bound: { text: '{{ props.title }}' },
+        props: { level: '3' },
+      },
       // The fallback: what a placement that passes nothing shows. It is a subtree like any
       // other, so it can be styled and can read the component's own props.
       {

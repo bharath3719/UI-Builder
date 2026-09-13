@@ -96,6 +96,40 @@ describe('history', () => {
       expect(undo(history).present).toBe(1);
     });
 
+    it('ignores the window for a sustained gesture', () => {
+      // A pointer drag with a long pause in the middle — the user stopping to look at
+      // what they have done so far. Still one drag, so still one undo step.
+      let history = createHistory(0);
+      history = pushHistory(history, 1, { coalesce: 'pad', sustained: true, ...at(1000) });
+      history = pushHistory(history, 2, {
+        coalesce: 'pad',
+        sustained: true,
+        ...at(1000 + COALESCE_MS * 10),
+      });
+
+      expect(history.present).toBe(2);
+      expect(undo(history).present).toBe(0);
+    });
+
+    it('still starts a new step for a different key when sustained', () => {
+      // `sustained` drops the timer, not the key: a second gesture is a second step
+      // however quickly it follows the first.
+      let history = createHistory(0);
+      history = pushHistory(history, 1, { coalesce: 'pad', sustained: true, ...at(1000) });
+      history = pushHistory(history, 2, { coalesce: 'margin', sustained: true, ...at(1010) });
+
+      expect(undo(history).present).toBe(1);
+    });
+
+    it('never merges a sustained edit into a state reached by undoing', () => {
+      let history = createHistory(0);
+      history = pushHistory(history, 1, { coalesce: 'pad', sustained: true, ...at(1000) });
+      history = undo(history);
+      history = pushHistory(history, 5, { coalesce: 'pad', sustained: true, ...at(1010) });
+
+      expect(undo(history).present).toBe(0);
+    });
+
     it('never merges into a state reached by undoing', () => {
       let history = createHistory(0);
       history = pushHistory(history, 1, { coalesce: 'width', ...at(1000) });

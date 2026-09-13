@@ -103,6 +103,9 @@ function useEditorShortcuts() {
     selectedId,
     deleteSelected,
     duplicateSelected,
+    copySelected,
+    cutSelected,
+    pasteClipboard,
     select,
     selectMany,
     drag,
@@ -183,11 +186,34 @@ function useEditorShortcuts() {
         return;
       }
 
+      // Paste before the selection check: an empty canvas is exactly where someone pastes,
+      // and there is nothing selected on one. It lands in the page root in that case.
+      if (hasMod(event) && event.key.toLowerCase() === 'v') {
+        event.preventDefault();
+        pasteClipboard();
+        return;
+      }
+
       if (!selectedId) return;
 
       if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
         deleteSelected();
+        return;
+      }
+
+      // `preventDefault` so the browser does not also copy whatever of the studio's own
+      // chrome happens to be selected — `isTyping` above has already let every real text
+      // field keep its native copy and paste.
+      if (hasMod(event) && event.key.toLowerCase() === 'c') {
+        event.preventDefault();
+        copySelected();
+        return;
+      }
+
+      if (hasMod(event) && event.key.toLowerCase() === 'x') {
+        event.preventDefault();
+        cutSelected();
         return;
       }
 
@@ -204,6 +230,9 @@ function useEditorShortcuts() {
     selectedId,
     deleteSelected,
     duplicateSelected,
+    copySelected,
+    cutSelected,
+    pasteClipboard,
     select,
     selectMany,
     drag,

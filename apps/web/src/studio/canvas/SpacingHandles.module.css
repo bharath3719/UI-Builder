@@ -1,0 +1,58 @@
+/* Drag-to-adjust spacing (see SpacingHandles.tsx).
+
+   Fixed, like every other overlay on the canvas: measured in client coordinates, so the
+   bands agree with the selection outline without either knowing what it is nested in. */
+
+.band {
+  position: fixed;
+  z-index: var(--z-canvas-overlay);
+  /* The one overlay that is not inert — it is the thing being grabbed. */
+  pointer-events: auto;
+  /* Invisible until pointed at. Eight tinted bands around every selected element would
+     be a second diagram over the design, competing with the thing being judged; the
+     affordance is the cursor, and the tint is the confirmation. */
+  background: transparent;
+  transition: background-color 90ms ease-out;
+}
+
+.band:hover {
+  background: color-mix(in srgb, var(--c-accent) 18%, transparent);
+}
+
+/* Padding and margin are told apart by where they are — inside the edge or outside it —
+   rather than by colour, which is what keeps this to one accent instead of the two-tone
+   scheme that makes a canvas look like a diagnostic tool. The difference in weight is
+   only enough to confirm which of the pair is under the cursor. */
+.padding:hover {
+  background: color-mix(in srgb, var(--c-accent) 22%, transparent);
+}
+
+.margin:hover {
+  background: color-mix(in srgb, var(--c-accent) 12%, transparent);
+}
+
+/* Held. Stays lit for the whole gesture, including the stretch where the cursor has long
+   since left the ten pixels it started in. */
+.band.active,
+.padding.active,
+.margin.active {
+  background: color-mix(in srgb, var(--c-accent) 28%, transparent);
+}
+
+/* The live value. Same treatment as the selection label, because it is the same kind of
+   thing: a small piece of editor chrome naming what is under the pointer. */
+.readout {
+  position: fixed;
+  z-index: var(--z-canvas-overlay);
+  pointer-events: none;
+  padding: 1px var(--sp-3);
+  background: var(--c-accent);
+  border-radius: var(--r-sm);
+  color: var(--c-text-on-accent);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  line-height: 16px;
+  white-space: nowrap;
+  /* Tabular figures so the number does not jitter sideways as it counts through a drag. */
+  font-variant-numeric: tabular-nums;
+}
