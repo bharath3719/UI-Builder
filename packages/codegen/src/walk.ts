@@ -38,6 +38,7 @@ import {
   type JsxNode,
 } from './ir.js';
 import {
+  camelCase,
   claimName,
   emitProp,
   handlerName,
@@ -169,8 +170,103 @@ export interface Walk {
   eventTypes: Set<string>;
   needsToasts: boolean;
   needsGoTo: boolean;
+  /**
+   * Every overlay in the tree, keyed by node id — the name its entry takes in the page's
+   * `overlays` object, and the code its initial value is seeded from.
+   *
+   * Built up front rather than as the walk reaches each one, because a button that opens a
+   * modal is very often above that modal in the tree, and a step cannot name a binding the
+   * walk has not decided on yet. Document order is also what keeps the emitted object
+   * stable: moving a button around the canvas must not reorder a declaration.
+   */
+  overlays: Map<string, { name: string; open: PropValue | undefined }>;
+  /**
+   * The subset actually referenced by emitted code. `overlays` lists what the tree
+   * *contains*; a page whose only modal is hidden declares nothing, which is `usedStyles`'
+   * reasoning — an unused binding is a compile error in the generated project.
+   */
+  overlaysUsed: Set<string>;
   /** Passed to the root element's `className`. See `ExpandContext.rootExtraClass`. */
   rootExtraClass?: string;
+}
+
+/**
+ * The overlays in a tree, in document order, each with the identifier it will be known by.
+ *
+ * From the layer name rather than the node id, for `handlerName`'s reason: someone reading
+ * the exported page should be able to tell which panel `overlays.deleteDialog` is. A name
+ * that carries no usable letters, or that another overlay already took, falls back the way
+ * every other generated name does.
+ */
+function collectOverlays(
+  tree: NodeTree,
+  symbols: readonly SymbolTarget[],
+): Map<string, { name: string; open: PropValue | undefined }> {
+  const overlays = new Map<string, { name: string; open: PropValue | undefined }>();
+  const taken = new Set<string>();
+  const defs = symbols.map((target) => target.symbol);
+
+  const visit = (id: string): void => {
+    const node = tree.nodes[id];
+    if (!node) return;
+
+    if (specFor(node.type, defs)?.overlay === true) {
+      const stem = camelCase(node.name);
+      overlays.set(node.id, {
+        name: claimName(taken, isIdentifier(stem) ? stem : 'overlay'),
+        open: node.props['open'],
+      });
+    }
+
+    for (const childId of node.children) visit(childId);
+  };
+
+  visit(tree.rootId);
+  return overlays;
+}
+
+/**
+ * The page's overlay state, or null when nothing on it is an overlay that got emitted.
+ *
+ * One object rather than a `useState` per panel, which is `state`'s shape for `state`'s
+ * reason: the names are the author's and the object is what the handlers and the markup
+ * both read, so there is one declaration to look at rather than one per dialog.
+ *
+ * Called at declaration time rather than while collecting, because a seed that is a
+ * binding registers a coercion helper — and registering one for a modal that turned out
+ * to be hidden would leave the generated project with an import it never uses, which its
+ * own `noUnusedLocals` rejects.
+ */
+export function overlayDeclaration(walk: Walk): string | null {
+  if (walk.overlaysUsed.size === 0) return null;
+
+  const entries: string[] = [];
+  for (const [nodeId, overlay] of walk.overlays) {
+    if (!walk.overlaysUsed.has(nodeId)) continue;
+
+    const seed = overlay.open ? emitProp(overlay.open, walk.helpers) : null;
+    // A bound `open` is written out as the expression the author typed and read once, when
+    // the page mounts — exactly what the canvas does with it. An overlay with no stored
+    // value starts open, which is the default `registry.test.ts` holds every overlay to.
+    const code =
+      seed === null
+        ? 'true'
+        : seed.kind === 'code'
+          ? truthyCode(seed.code, true, walk.helpers)
+          : String(isTruthy(seed.value));
+
+    entries.push(`${objectKey(overlay.name)}: ${code}`);
+  }
+
+  return `const [overlays, setOverlays] = useState({ ${entries.join(', ')} });`;
+}
+
+/** Where a step and an element agree on what to call one overlay. */
+function overlayBinding(walk: Walk, nodeId: string): string | null {
+  const overlay = walk.overlays.get(nodeId);
+  if (!overlay) return null;
+  walk.overlaysUsed.add(nodeId);
+  return overlay.name;
 }
 
 export function createWalk(init: Partial<Walk> & Pick<Walk, 'tree'>): Walk {
@@ -189,6 +285,8 @@ export function createWalk(init: Partial<Walk> & Pick<Walk, 'tree'>): Walk {
     eventTypes: new Set(),
     needsToasts: false,
     needsGoTo: false,
+    overlays: collectOverlays(init.tree, init.symbols ?? []),
+    overlaysUsed: new Set(),
     ...(init.rootExtraClass === undefined ? {} : { rootExtraClass: init.rootExtraClass }),
   };
 }
@@ -255,6 +353,22 @@ function stepStatements(step: ActionStep, node: Node, event: string, walk: Walk)
     case 'showToast':
       walk.needsToasts = true;
       return [`showToast(${textOfProp(step.message, walk.helpers)});`];
+
+    case 'openOverlay':
+    case 'closeOverlay': {
+      const binding = overlayBinding(walk, step.nodeId);
+      const verb = step.kind === 'openOverlay' ? 'opens' : 'closes';
+      if (binding === null) {
+        walk.warnings.push(`${where}: ${verb} an overlay that is not on this page — step dropped.`);
+        return [];
+      }
+      // The updater form, for `toggleState`'s reason: two steps that touch the overlays in
+      // one handler both land, where reading the render's object would make the second
+      // overwrite the first.
+      return [
+        `setOverlays((current) => ({ ...current, ${objectKey(binding)}: ${step.kind === 'openOverlay'} }));`,
+      ];
+    }
 
     case 'custom':
       // The author's own JavaScript, written out as they typed it. Nothing here parses or
@@ -533,6 +647,22 @@ export function walkNode(
   if (element_) {
     for (const handler of emitHandlers(node, spec, element_.tag, walk, inner)) {
       element_.attrs.push({ name: handler.name, kind: 'expr', code: handler.code });
+    }
+
+    // The two props `Overlay` takes that no template can carry: one is page state and the
+    // other is what changes it. Pushed after the handlers so an author's own `onClick` on
+    // a modal sits beside them rather than being displaced — `Overlay` composes the two
+    // rather than choosing between them.
+    if (spec.overlay) {
+      const binding = overlayBinding(walk, node.id);
+      if (binding !== null) {
+        element_.attrs.push({ name: 'open', kind: 'expr', code: `overlays.${binding}` });
+        element_.attrs.push({
+          name: 'onClose',
+          kind: 'expr',
+          code: `() => setOverlays((current) => ({ ...current, ${objectKey(binding)}: false }))`,
+        });
+      }
     }
   }
 

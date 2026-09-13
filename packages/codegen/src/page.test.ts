@@ -361,6 +361,46 @@ describe('conditional subtrees', () => {
     expect(tsx).toContain('<td className="ub-table-cell" />');
   });
 
+  test('a tab strip marks exactly one tab, falling back to the first', () => {
+    const { tsx } = onePage('Tabs', { items: 'a | Alpha\nb | Beta\nc', active: 'b' });
+
+    expect(tsx).toContain(
+      '<button type="button" className="ub-tab" role="tab" aria-selected="false">Alpha</button>',
+    );
+    expect(tsx).toContain('aria-selected="true" data-active=""');
+    // A bare line is its own label, as everywhere else options are authored.
+    expect(tsx).toContain('>c</button>');
+    expect(tsx.match(/data-active/g)).toHaveLength(1);
+
+    // Unlike a nav, which marks nothing when the current page is elsewhere: a strip with
+    // no tab selected reads as a rendering fault, so one of them has to be current.
+    const stray = onePage('Tabs', { items: 'a | Alpha\nb | Beta', active: '/nowhere' }).tsx;
+    expect(stray.match(/data-active/g)).toHaveLength(1);
+    // The printer puts a long attribute list on its own line, hence the two halves.
+    expect(stray).toContain('aria-selected="true" data-active="">');
+    expect(stray).toMatch(/data-active="">\s*Alpha/);
+  });
+
+  test('an accordion expands to details rows, opening at most the first', () => {
+    const { tsx } = onePage('Accordion', {
+      items: 'First | Its answer\nSecond | Another\nJust a title',
+      openFirst: true,
+    });
+
+    expect(tsx).toContain('<details className="ub-accordion-item" open>');
+    expect(tsx).toContain('<summary className="ub-accordion-summary">First</summary>');
+    expect(tsx).toContain('<div className="ub-accordion-body">Its answer</div>');
+    // A row with nothing under it is a summary and no panel, rather than an empty one
+    // holding its padding open.
+    expect(tsx).toContain('<summary className="ub-accordion-summary">Just a title</summary>');
+    expect(tsx.match(/ub-accordion-body/g)).toHaveLength(2);
+    expect(tsx.match(/ open>/g)).toHaveLength(1);
+
+    expect(
+      onePage('Accordion', { items: 'First | Its answer', openFirst: false }).tsx,
+    ).not.toContain(' open>');
+  });
+
   test('a table with no header line emits no thead', () => {
     const { tsx } = onePage('Table', { columns: '', rows: 'Ada | Owner', reorderable: false });
 

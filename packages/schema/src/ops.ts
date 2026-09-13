@@ -293,7 +293,15 @@ export function moveNodes<T extends NodeTree>(
   return next;
 }
 
-/** Removes a node and everything under it. The root cannot be deleted. */
+/**
+ * Removes a node and everything under it, and with them every action step that opened or
+ * closed one of them. The root cannot be deleted.
+ *
+ * The cascade is `removeStateVar`'s, one level up: a `closeOverlay` naming a modal that is
+ * gone is a button that silently does nothing, and it is the deletion — not the next
+ * reader of the document — that knows the id has stopped meaning anything. It runs over
+ * the nodes that survive, so a handler inside the doomed subtree is not visited at all.
+ */
 export function deleteNode<T extends NodeTree>(tree: T, nodeId: NodeId): T {
   const node = getNode(tree, nodeId);
   if (node.parentId === null) fail('the root node cannot be deleted');
@@ -307,7 +315,11 @@ export function deleteNode<T extends NodeTree>(tree: T, nodeId: NodeId): T {
   const parent = getNode(tree, node.parentId);
   nodes[parent.id] = { ...parent, children: parent.children.filter((id) => id !== nodeId) };
 
-  return withNodes(tree, nodes);
+  return pruneSteps(
+    withNodes(tree, nodes),
+    (step) =>
+      (step.kind === 'openOverlay' || step.kind === 'closeOverlay') && doomed.has(step.nodeId),
+  );
 }
 
 export function reorder<T extends NodeTree>(

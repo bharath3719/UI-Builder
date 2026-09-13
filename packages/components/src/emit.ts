@@ -185,6 +185,25 @@ export type EmitChild =
    */
   | { navItems: { items: string; active?: string; class: string } }
   /**
+   * The same option list expanded into a tab strip — `Tabs`.
+   *
+   * Its own transform rather than `navItems` with a different class, because a tab is not
+   * a link: it is a `<button>` carrying `role="tab"`, and exactly one of them is current
+   * whatever was typed into `active` (`selectedOption`). A footer can mark nothing; a tab
+   * strip with nothing selected reads as a rendering fault.
+   */
+  | { tabItems: { items: string; active: string } }
+  /**
+   * `Title | Body` per line expanded into `<details>` rows — `Accordion`.
+   *
+   * The one transform whose output is interactive and still ships no JavaScript: a
+   * disclosure is a browser feature, so the exported page opens and closes with nothing
+   * wired up. `open` names the boolean prop that decides whether the *first* row starts
+   * open; the rest never do, which is what makes a fresh accordion legible rather than a
+   * wall of open text.
+   */
+  | { disclosures: { items: string; open?: string } }
+  /**
    * Expands Markdown into the elements it describes — `RichText`.
    *
    * The parse is `parseRichText` in `markdown.ts`, the same one the component renders

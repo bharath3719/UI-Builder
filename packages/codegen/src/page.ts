@@ -42,6 +42,7 @@ import {
   jsonLiteral,
   objectKey,
   objectLiteral,
+  overlayDeclaration,
   reads,
   walkNode,
   type SymbolTarget,
@@ -234,11 +235,15 @@ export function generatePage(
   const state = stateDeclaration(page, scanned);
   if (state) preamble.push(state);
   preamble.push(...queryDeclarations(page, scanned, walk.helpers));
+  // After the two above, so an overlay seeded from a binding can read them — it is an
+  // expression like any other, and the names it may mention are already in scope.
+  const overlays = overlayDeclaration(walk);
+  if (overlays) preamble.push(overlays);
   if (walk.needsToasts) preamble.push('const { toasts, showToast } = useToasts();');
   if (walk.needsGoTo) preamble.push('const goTo = useGoTo();');
   preamble.push(...statements);
 
-  const usesState = state !== null;
+  const usesState = state !== null || overlays !== null;
   const usesQueries =
     page.queries.length > 0 && preamble.some((line) => line.includes('useQuery('));
 

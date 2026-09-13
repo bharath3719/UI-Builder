@@ -84,10 +84,11 @@ export const StyleSetSchema = z.record(z.string(), z.record(z.string(), StyleDec
  * — `state.count` is free-form text and nothing can rewrite it safely — which is why
  * the ids are used everywhere they can be.
  *
- * `openOverlay`/`closeOverlay` are deliberately absent: there are no overlay components
- * in the library yet, and a step kind the runtime cannot execute is one the editor would
- * happily let someone author. Adding a member later is not a migration, because no
- * stored document can contain one.
+ * `openOverlay`/`closeOverlay` name their target by **node id**, which is the third
+ * application of the same rule: an overlay renamed in the layers tree keeps every handler
+ * that opens it. They arrived with the overlay components that can execute them — the
+ * condition this comment used to record as the reason for their absence — and adding them
+ * was not a migration, because no stored document could contain one.
  */
 export type ActionStep =
   | { kind: 'setState'; stateId: string; value: PropValue }
@@ -95,6 +96,8 @@ export type ActionStep =
   | { kind: 'runQuery'; queryId: string }
   | { kind: 'navigate'; to: PropValue }
   | { kind: 'showToast'; message: PropValue }
+  | { kind: 'openOverlay'; nodeId: NodeId }
+  | { kind: 'closeOverlay'; nodeId: NodeId }
   | { kind: 'custom'; code: string };
 
 export const ActionStepSchema = z.discriminatedUnion('kind', [
@@ -103,6 +106,8 @@ export const ActionStepSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('runQuery'), queryId: z.string().min(1) }),
   z.object({ kind: z.literal('navigate'), to: PropValueSchema }),
   z.object({ kind: z.literal('showToast'), message: PropValueSchema }),
+  z.object({ kind: z.literal('openOverlay'), nodeId: z.string().min(1) }),
+  z.object({ kind: z.literal('closeOverlay'), nodeId: z.string().min(1) }),
   z.object({ kind: z.literal('custom'), code: z.string() }),
 ]);
 
@@ -112,6 +117,8 @@ export const ACTION_KINDS = [
   'runQuery',
   'navigate',
   'showToast',
+  'openOverlay',
+  'closeOverlay',
   'custom',
 ] as const satisfies readonly ActionStep['kind'][];
 

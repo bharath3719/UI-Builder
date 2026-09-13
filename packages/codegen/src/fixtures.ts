@@ -319,7 +319,7 @@ export function interactiveDoc(): ProjectDoc {
         id: 'root',
         type: 'VStack',
         name: 'Page',
-        children: ['heading', 'field', 'counter', 'empty', 'people', 'away'],
+        children: ['heading', 'field', 'counter', 'ask', 'confirm', 'empty', 'people', 'away'],
         props: { gap: '4' },
         styles: { base: { default: { padding: 32, minHeight: '100%' } } },
       },
@@ -361,6 +361,41 @@ export function interactiveDoc(): ProjectDoc {
             { kind: 'toggleState', stateId: 'sv-busy' },
             { kind: 'runQuery', queryId: 'q-save' },
             { kind: 'showToast', message: exprProp('Counted to {{ state.count + 1 }}') },
+          ],
+        },
+      },
+      // The overlay half. The button opens a panel that starts closed, and the panel's own
+      // children are ordinary nodes — so this covers the wrapper module, the seeded state,
+      // and a step naming a node rather than a variable.
+      {
+        id: 'ask',
+        type: 'Button',
+        name: 'Delete',
+        props: { text: 'Delete everything', variant: 'destructive' },
+        events: { onClick: [{ kind: 'openOverlay', nodeId: 'confirm' }] },
+      },
+      {
+        id: 'confirm',
+        type: 'Modal',
+        name: 'Confirm delete',
+        children: ['confirm-go'],
+        props: {
+          open: false,
+          title: 'Delete everything?',
+          description: 'This cannot be undone.',
+        },
+      },
+      // A handler inside the panel, closing the panel it is in: the ordinary shape, and the
+      // one that proves a step can name an overlay it is a descendant of.
+      {
+        id: 'confirm-go',
+        type: 'Button',
+        name: 'Confirm',
+        props: { text: 'Yes, delete', variant: 'destructive' },
+        events: {
+          onClick: [
+            { kind: 'runQuery', queryId: 'q-save' },
+            { kind: 'closeOverlay', nodeId: 'confirm' },
           ],
         },
       },

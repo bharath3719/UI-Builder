@@ -392,6 +392,96 @@ describe('queries', () => {
   });
 });
 
+describe('overlays', () => {
+  /** A page with a modal and a button wired to open it. */
+  const withModal = (events: Record<string, ActionStep[]>, props: Record<string, unknown> = {}) =>
+    tsxOf({
+      children: {
+        opener: { type: 'Button', name: 'Open', events },
+        dialog: { type: 'Modal', name: 'Delete dialog', props: { open: false, ...props } },
+      },
+    });
+
+  test('the panel is page state, seeded from the prop, and the markup reads it', () => {
+    const tsx = withModal({});
+
+    // Seeded from `open` rather than hard-coded: the document says where it starts, and
+    // the page says where it is now — which is the same split `overlays.ts` makes on the
+    // canvas, so the export opens in the state the preview did.
+    expect(tsx).toContain('const [overlays, setOverlays] = useState({ deleteDialog: false });');
+    expect(tsx).toContain('open={overlays.deleteDialog}');
+  });
+
+  test('a step names the panel by the layer name, not by the node id', () => {
+    // `handlerName`'s rule: someone reading the exported page should be able to tell which
+    // dialog this is. Ids are opaque; the name is what the author typed in the tree.
+    const tsx = withModal({ onClick: [{ kind: 'openOverlay', nodeId: 'dialog' }] });
+
+    expect(tsx).toContain('setOverlays((current) => ({ ...current, deleteDialog: true }));');
+    expect(tsx).not.toContain('dialog:');
+  });
+
+  test('the updater form, so two steps in one handler both land', () => {
+    // `toggleState`'s reason: reading the render's object would make the second step
+    // overwrite the first, and a handler that closes one panel and opens another is the
+    // ordinary case rather than an exotic one.
+    const tsx = tsxOf({
+      children: {
+        opener: {
+          type: 'Button',
+          name: 'Swap',
+          events: {
+            onClick: [
+              { kind: 'closeOverlay', nodeId: 'first' },
+              { kind: 'openOverlay', nodeId: 'second' },
+            ],
+          },
+        },
+        first: { type: 'Modal', name: 'First' },
+        second: { type: 'Drawer', name: 'Second' },
+      },
+    });
+
+    expect(tsx).toContain('...current, first: false');
+    expect(tsx).toContain('...current, second: true');
+  });
+
+  test('every panel gets a way out, whether or not anything opens it', () => {
+    // The close button and the backdrop are marked in the template; this is what turns
+    // that mark into a dismissal. Without it a modal opened by a step could never be shut.
+    expect(withModal({})).toContain(
+      'onClose={() => setOverlays((current) => ({ ...current, deleteDialog: false }))}',
+    );
+  });
+
+  test('a page with no overlay declares none', () => {
+    // `usedStyles`' rule: an unused binding is a compile error in the generated project,
+    // and every page that has never seen a modal must still export as it always did.
+    const tsx = tsxOf({ type: 'Button', name: 'Plain' });
+
+    expect(tsx).not.toContain('setOverlays');
+    expect(tsx).not.toContain('useState');
+  });
+
+  test('a step naming something that is not an overlay is dropped, and says so', () => {
+    const { tsx, warnings } = generatePage(
+      pageOf({
+        children: {
+          opener: {
+            type: 'Button',
+            name: 'Open',
+            events: { onClick: [{ kind: 'openOverlay', nodeId: 'root' }] },
+          },
+        },
+      }),
+      DEFAULT_THEME,
+    );
+
+    expect(tsx).not.toContain('setOverlays');
+    expect(warnings[0]).toContain('opens an overlay that is not on this page');
+  });
+});
+
 describe('what the export cannot carry', () => {
   test('a bound option list exports empty, and says so', () => {
     // The transform's *shape* is the text it parses, which is why it is a transform at all

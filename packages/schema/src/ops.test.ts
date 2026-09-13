@@ -248,6 +248,28 @@ describe('deleteNode', () => {
   it('refuses to delete the root', () => {
     expect(() => deleteNode(fixture(), 'root')).toThrow(DocumentError);
   });
+
+  it('takes the steps that opened or closed what it deleted', () => {
+    // `removeStateVar`'s cascade one level up: a step pointing at a node that is gone is a
+    // button that silently does nothing, and every reader would have to tolerate the
+    // dangling id. The deletion is what knows the id has stopped meaning anything.
+    const page = setNodeEvent(fixture(), 'b', 'onClick', [
+      { kind: 'openOverlay', nodeId: 'a' },
+      { kind: 'closeOverlay', nodeId: 'c' },
+    ]);
+
+    const after = deleteNode(page, 'a');
+
+    expect(after.nodes.b?.events['onClick']).toEqual([{ kind: 'closeOverlay', nodeId: 'c' }]);
+  });
+
+  it('takes a step that named something inside the subtree it deleted', () => {
+    const page = setNodeEvent(fixture(), 'b', 'onClick', [{ kind: 'openOverlay', nodeId: 'a1' }]);
+
+    // The handler is removed entirely rather than left empty — `pruneSteps`' clause that a
+    // second copy of this cascade would be the one to forget.
+    expect(deleteNode(page, 'a').nodes.b?.events['onClick']).toBeUndefined();
+  });
 });
 
 describe('reorder', () => {

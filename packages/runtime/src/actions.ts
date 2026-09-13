@@ -30,6 +30,8 @@ export interface ActionHost {
   runQuery: (id: string) => Promise<void>;
   navigate: (to: string) => void;
   toast: (message: string) => void;
+  openOverlay: (nodeId: string) => void;
+  closeOverlay: (nodeId: string) => void;
   runCode: (code: string) => void;
   /** Said out loud rather than thrown — a broken handler must not take the page down. */
   report: (message: string) => void;
@@ -109,6 +111,23 @@ async function runStep(step: ActionStep, host: ActionHost): Promise<void> {
 
     case 'showToast': {
       host.toast(textOf(step.message, host.evaluate));
+      return;
+    }
+
+    case 'openOverlay':
+    case 'closeOverlay': {
+      // Existence only. Whether the node is an *overlay* is settled where the step is
+      // authored — the action editor lists nothing else — and re-deciding it here would
+      // mean the interpreter reading the component registry, which is the dependency
+      // `schema` and this file are arranged to avoid.
+      if (!host.page.nodes[step.nodeId]) {
+        host.report(
+          `${step.kind === 'openOverlay' ? 'opens' : 'closes'} an overlay that no longer exists`,
+        );
+        return;
+      }
+      if (step.kind === 'openOverlay') host.openOverlay(step.nodeId);
+      else host.closeOverlay(step.nodeId);
       return;
     }
 

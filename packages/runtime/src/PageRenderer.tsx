@@ -311,6 +311,23 @@ function NodeInstance({ node, context, scope, inactive, overlay }: InstanceProps
   const className = nodeClassName(node.id);
   const spec = specFor(node.type, context.symbols);
 
+  // An overlay is on screen when the page's overlay state says so — its own `open` prop
+  // only seeds that (see `overlays.ts`). The canvas draws it either way, dimmed and
+  // labelled when it is closed, for the reason a false `showIf` is kept: a modal that
+  // vanished because nothing had opened it yet is one nobody could select in order to
+  // wire up the button that does.
+  const isOverlay = spec?.overlay === true;
+  const seed = node.props['open'];
+  const open =
+    !isOverlay ||
+    context.runtime.overlays.isOpen(
+      node.id,
+      // `isTruthy` rather than a boolean coercion of its own, because this is the same
+      // question `showIf` asks and codegen writes it as the same `truthy` helper (D6).
+      seed === undefined ? true : isTruthy(evaluateProp(seed, evaluate)),
+    );
+  if (!open) dormant ??= 'Closed';
+
   const failure = problems[0];
   const status: Record<string, unknown> = {};
   if (context.editing) {
@@ -395,6 +412,16 @@ function NodeInstance({ node, context, scope, inactive, overlay }: InstanceProps
   const props = resolveProps(node, spec, evaluate);
   const handlers = eventHandlers(node, spec, context, scope);
 
+  // Spread after `props`, so the page's answer displaces the document's seed. While
+  // editing there is no dismissal to offer: the canvas owns every click, and a modal that
+  // closed itself when its own × was selected would be one the author could not get back.
+  const overlayProps: Record<string, unknown> = isOverlay
+    ? {
+        open: context.editing || open,
+        ...(context.editing ? {} : { onClose: () => context.runtime.overlays.close(node.id) }),
+      }
+    : {};
+
   const children = spec.acceptsChildren
     ? node.children.map((childId) => (
         <NodeRenderer key={childId} id={childId} context={context} scope={scope} />
@@ -417,7 +444,14 @@ function NodeInstance({ node, context, scope, inactive, overlay }: InstanceProps
     >
       {/* Handlers after props so a bound prop cannot displace one; editor attributes
           last, because `readOnly` has to win over anything the document says. */}
-      <Component {...props} {...handlers} {...editorAttributes} {...status} className={classes}>
+      <Component
+        {...props}
+        {...handlers}
+        {...overlayProps}
+        {...editorAttributes}
+        {...status}
+        className={classes}
+      >
         {children}
       </Component>
     </NodeErrorBoundary>

@@ -239,6 +239,12 @@ export function pascalCase(input: string): string {
     .join('');
 }
 
+/** 'Delete dialog' -> 'deleteDialog'. Empty when the name carries no letters or digits. */
+export function camelCase(input: string): string {
+  const pascal = pascalCase(input);
+  return pascal === '' ? '' : pascal[0]!.toLowerCase() + pascal.slice(1);
+}
+
 /**
  * A handler's name — 'Get started' + 'onClick' -> 'onGetStartedClick'.
  *

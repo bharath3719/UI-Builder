@@ -19,6 +19,7 @@ import type {
 import { useCallback, useMemo, useState } from 'react';
 import { runSteps } from './actions.js';
 import { createEvaluator, runStatements, type EvalRealm } from './evaluate.js';
+import { usePageOverlays, type OverlayRuntime } from './overlays.js';
 import { usePageQueries } from './queries.js';
 import { usePageState } from './state.js';
 
@@ -62,6 +63,8 @@ export interface PageRuntimeOptions {
 export interface PageRuntimeValue {
   scope: RenderScope;
   toasts: readonly Toast[];
+  /** Which overlays are on screen, and the two steps that change that. */
+  overlays: OverlayRuntime;
   dispatch: (
     node: Node,
     event: string,
@@ -104,6 +107,7 @@ export function usePageRuntime({
   onNavigate,
 }: PageRuntimeOptions): PageRuntimeValue {
   const state = usePageState(page.state);
+  const overlays = usePageOverlays();
   const [toasts, setToasts] = useState<readonly Toast[]>([]);
 
   // Passed *into* the queries hook rather than built around it: the scope contains the
@@ -155,12 +159,27 @@ export function usePageRuntime({
         runQuery: run,
         navigate: (to) => navigateTo(to, onNavigate),
         toast: showToast,
+        openOverlay: overlays.open,
+        closeOverlay: overlays.close,
         runCode: (code) => runStatements(code, actionScope, realm),
         report,
       });
     },
-    [page, state.setValue, state.toggle, run, realm, onNavigate, showToast],
+    [
+      page,
+      state.setValue,
+      state.toggle,
+      run,
+      realm,
+      onNavigate,
+      showToast,
+      overlays.open,
+      overlays.close,
+    ],
   );
 
-  return useMemo(() => ({ scope, toasts, dispatch }), [scope, toasts, dispatch]);
+  return useMemo(
+    () => ({ scope, toasts, overlays, dispatch }),
+    [scope, toasts, overlays, dispatch],
+  );
 }

@@ -108,6 +108,19 @@ export interface ComponentSpec {
    */
   interactive?: boolean;
 
+  /**
+   * Whether this component is something an `openOverlay`/`closeOverlay` step can act on
+   * (PLAN.md §10) — a modal or a drawer, which is on screen only once something has asked
+   * for it.
+   *
+   * Declared rather than read off the category, because `Overlay` is a palette group and
+   * this is a runtime contract: `Tabs`, `Accordion` and `Tooltip` are filed there too and
+   * are always on the page, showing and hiding their own contents with no step involved.
+   * The flag is what the action editor lists, what the renderer consults before deciding a
+   * node is closed, and what `openProp` below is paired with.
+   */
+  overlay?: boolean;
+
   defaultProps: Record<string, Json>;
   defaultStyles: StyleDecls;
 

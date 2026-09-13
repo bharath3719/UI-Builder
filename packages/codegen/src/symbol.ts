@@ -29,6 +29,7 @@ import {
   createWalk,
   isIdentifier,
   jsonLiteral,
+  overlayDeclaration,
   reads,
   walkNode,
   type SymbolTarget,
@@ -134,6 +135,8 @@ export function generateSymbol(
   if (usesProps) {
     preamble.push(`const props = { ${symbol.props.map((prop) => prop.name).join(', ')} };`);
   }
+  const overlays = overlayDeclaration(walk);
+  if (overlays) preamble.push(overlays);
   if (walk.needsToasts) preamble.push('const { toasts, showToast } = useToasts();');
   if (walk.needsGoTo) preamble.push('const goTo = useGoTo();');
   preamble.push(...statements);
@@ -142,7 +145,10 @@ export function generateSymbol(
   const runtime: RuntimeModule[] = [];
   const lines: string[] = [];
 
-  const react = [...walk.eventTypes].sort().map((type) => `type ${type}`);
+  const react = [
+    ...(overlays ? ['useState'] : []),
+    ...[...walk.eventTypes].sort().map((type) => `type ${type}`),
+  ];
   if (react.length > 0) lines.push(`import { ${react.join(', ')} } from 'react';`);
 
   if (walk.helpers.size > 0) {

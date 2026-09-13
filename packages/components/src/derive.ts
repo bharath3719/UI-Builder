@@ -35,6 +35,45 @@ export function parseOptions(text: string): SelectOption[] {
     });
 }
 
+/**
+ * Which of a set of options is the current one: the one that matches, or the first.
+ *
+ * `Tabs` is why the fallback is here rather than in the component — a tab strip with
+ * nothing selected reads as broken, so one of them has to be current whatever the
+ * `active` prop says, and the canvas and the export have to agree about which (D6).
+ * `SideNav` deliberately does *not* use this: a nav whose current page is elsewhere
+ * marks nothing, which is the truth.
+ */
+export function selectedOption(options: SelectOption[], active: string): SelectOption | undefined {
+  return options.find((option) => option.value === active) ?? options[0];
+}
+
+/** One collapsible row of an `Accordion`: what the summary says, and what is under it. */
+export interface Disclosure {
+  title: string;
+  body: string;
+}
+
+/**
+ * `Title | Body` per line — the `Accordion` half of the trade `Select` and `Table` make
+ * (PLAN.md §7): a list of questions and their answers is data.
+ *
+ * Not `parseOptions`, though the shape rhymes: a bare line there is *both* halves, which
+ * for a disclosure would print the question again as its own answer. Here a bare line is
+ * a title with nothing under it, and the empty body is what the summary-only row is.
+ */
+export function parseDisclosures(text: string): Disclosure[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const separator = line.indexOf('|');
+      if (separator === -1) return { title: line, body: '' };
+      return { title: line.slice(0, separator).trim(), body: line.slice(separator + 1).trim() };
+    });
+}
+
 export interface TableData {
   /** Column headings, padded to `width`. Empty when the table was given no header line. */
   headers: string[];

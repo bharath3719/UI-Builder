@@ -26,6 +26,7 @@ import {
   type Page,
   type PropValue,
 } from '@ui-builder/schema';
+import { getSpec } from '@ui-builder/components';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { useId } from 'react';
 import { useStudio } from '../state/context.js';
@@ -43,8 +44,34 @@ const STEP_LABELS: Record<ActionStep['kind'], string> = {
   runQuery: 'Run query',
   navigate: 'Navigate',
   showToast: 'Show toast',
+  openOverlay: 'Open overlay',
+  closeOverlay: 'Close overlay',
   custom: 'Run code',
 };
+
+/**
+ * The overlays on this surface, in document order — everything an open/close step can name.
+ *
+ * Walked from the root rather than read off `page.nodes`, whose key order is whatever the
+ * document was built in: a picker that reshuffles itself when an unrelated node is added is
+ * one nobody can find anything in twice.
+ *
+ * Only library components can be overlays, so this consults the registry directly rather
+ * than `specFor` — a symbol instance is never one, whatever it contains.
+ */
+function overlayNodes(page: Page): Node[] {
+  const found: Node[] = [];
+
+  const visit = (id: string): void => {
+    const node = page.nodes[id];
+    if (!node) return;
+    if (getSpec(node.type)?.overlay === true) found.push(node);
+    for (const childId of node.children) visit(childId);
+  };
+
+  visit(page.rootId);
+  return found;
+}
 
 /**
  * A new step of a kind, with its required fields filled in.
@@ -78,6 +105,13 @@ function blankStep(kind: ActionStep['kind'], page: Page): ActionStep | null {
     case 'showToast':
       return { kind, message: staticProp('') };
 
+    case 'openOverlay':
+    case 'closeOverlay': {
+      const overlay = overlayNodes(page)[0];
+      if (!overlay) return null;
+      return { kind, nodeId: overlay.id };
+    }
+
     case 'custom':
       return { kind, code: '' };
   }
@@ -89,6 +123,9 @@ function unavailable(kind: ActionStep['kind'], page: Page): string | null {
     return 'Add a state variable first';
   }
   if (kind === 'runQuery' && page.queries.length === 0) return 'Add a query first';
+  if ((kind === 'openOverlay' || kind === 'closeOverlay') && overlayNodes(page).length === 0) {
+    return 'Add a modal or drawer first';
+  }
   return null;
 }
 
@@ -261,6 +298,27 @@ function StepEditor({ node, event, steps, index }: StepProps) {
               {page.queries.map((query) => (
                 <option key={query.id} value={query.id}>
                   {query.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
+        {step.kind === 'openOverlay' || step.kind === 'closeOverlay' ? (
+          <div className={styles.field}>
+            <label className={styles.fieldLabel} htmlFor={`${id}-overlay`}>
+              Overlay
+            </label>
+            <select
+              id={`${id}-overlay`}
+              className={styles.select}
+              value={step.nodeId}
+              disabled={!writable}
+              onChange={(changed) => replace({ ...step, nodeId: changed.target.value })}
+            >
+              {overlayNodes(page).map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
                 </option>
               ))}
             </select>

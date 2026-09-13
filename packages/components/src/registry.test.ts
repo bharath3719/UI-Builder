@@ -26,6 +26,19 @@ describe('the registry', () => {
     }
   });
 
+  it('gives every overlay an open prop to be seeded from', () => {
+    // `overlay` and the prop are two halves of one contract: the renderer and codegen both
+    // read `open` to decide where the page's overlay state starts, and a component that
+    // claimed the flag without offering the prop would export as a panel nothing can open
+    // — with nothing in the build to say so.
+    for (const spec of SPECS) {
+      if (!spec.overlay) continue;
+      const open = spec.props.find((prop) => prop.name === 'open');
+      expect(open?.type, `${spec.key}.open`).toBe('boolean');
+      expect(spec.defaultProps['open'], `${spec.key}.open default`).toBe(true);
+    }
+  });
+
   it('gives every enum prop a default that is one of its own options', () => {
     // A default outside the option list shows as an empty select the moment the
     // inspector renders it.
@@ -51,6 +64,7 @@ describe('the registry', () => {
       'Data',
       'Media',
       'AI',
+      'Overlay',
     ]);
     expect(groups.every((group) => group.specs.length > 0)).toBe(true);
     expect(groups.flatMap((group) => group.specs)).toHaveLength(SPECS.length);

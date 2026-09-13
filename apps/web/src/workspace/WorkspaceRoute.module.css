@@ -16,11 +16,15 @@
   padding: var(--sp-9) var(--sp-8);
 }
 
+/* The rule is what separates the heading from the grid; without it the two float in
+   the same empty backdrop and the page reads as unstructured. */
 .header {
   display: flex;
   align-items: flex-end;
   gap: var(--sp-6);
-  margin-bottom: var(--sp-8);
+  padding-bottom: var(--sp-6);
+  margin-bottom: var(--sp-7);
+  border-bottom: 1px solid var(--c-border);
 }
 
 .heading {
@@ -55,18 +59,22 @@
   gap: var(--sp-6);
 }
 
+/* `--c-border` is within a hair of `--c-backdrop` in light mode, so the resting card
+   outline was invisible against the page and the grid read as bare white rectangles.
+   Cards sitting directly on the backdrop take the strong hairline; the internal rules
+   (thumbnail edge, dividers) stay on the quiet one. */
 .card {
   display: flex;
   flex-direction: column;
   background: var(--c-surface);
-  border: 1px solid var(--c-border);
+  border: 1px solid var(--c-border-strong);
   border-radius: var(--r-md);
   overflow: hidden;
   transition: border-color var(--dur-fast) var(--ease);
 }
 
 .card:hover {
-  border-color: var(--c-border-strong);
+  border-color: var(--c-accent-border);
 }
 
 /* Archived projects stay in place and stay readable; the thumbnail recedes so an
@@ -81,7 +89,9 @@
 .thumb {
   display: block;
   aspect-ratio: 16 / 10;
-  background: var(--c-backdrop);
+  /* Panel, not backdrop: a card with no preview yet would otherwise be a hole the
+     same colour as the page behind it, leaving only the outline to read. */
+  background: var(--c-panel);
   border-bottom: 1px solid var(--c-border);
   position: relative;
   /* It is an anchor wrapping text in the no-thumbnail case, so it inherits the

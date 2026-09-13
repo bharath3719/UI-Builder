@@ -1,6 +1,7 @@
 import {
   DEFAULT_THEME,
   exprProp,
+  makeNode,
   makePage,
   staticProp,
   type ActionScope,
@@ -52,6 +53,8 @@ function hostFor(scope: Partial<ActionScope> = {}) {
     },
     navigate: (to) => log.push(`navigate ${to}`),
     toast: (message) => log.push(`toast ${message}`),
+    openOverlay: (nodeId) => log.push(`openOverlay ${nodeId}`),
+    closeOverlay: (nodeId) => log.push(`closeOverlay ${nodeId}`),
     runCode: (code) => log.push(`runCode ${code}`),
     report: (message) => reports.push(message),
   };
@@ -178,6 +181,36 @@ describe('runSteps', () => {
     const { host, log } = hostFor({ state: { count: 3 } });
     await runSteps([{ kind: 'showToast', message: exprProp('{{ state.count }} left') }], host);
     expect(log).toEqual(['toast 3 left']);
+  });
+
+  it('opens and closes an overlay by node id', async () => {
+    const { host, log } = hostFor();
+    host.page = makePage({
+      id: 'p1',
+      rootId: 'n1',
+      nodes: { n1: makeNode({ id: 'n1', parentId: null, type: 'Modal', name: 'Dialog' }) },
+    });
+
+    await runSteps(
+      [
+        { kind: 'openOverlay', nodeId: 'n1' },
+        { kind: 'closeOverlay', nodeId: 'n1' },
+      ],
+      host,
+    );
+
+    expect(log).toEqual(['openOverlay n1', 'closeOverlay n1']);
+  });
+
+  it('reports an overlay that is gone, and does nothing', async () => {
+    // The same bargain the other cascades strike: `deleteNode` takes these steps with the
+    // node, so reaching this means a document that arrived with one — and a handler that
+    // silently did nothing would be worse than one that says why.
+    const { host, log, reports } = hostFor();
+    await runSteps([{ kind: 'closeOverlay', nodeId: 'gone' }], host);
+
+    expect(log).toEqual([]);
+    expect(reports).toEqual(['closes an overlay that no longer exists']);
   });
 
   it('runs a custom step as statements', async () => {

@@ -27,9 +27,11 @@ import {
   blockTag,
   initialsOf,
   inlineTag,
+  parseDisclosures,
   parseOptions,
   parseRichText,
   parseTable,
+  selectedOption,
   type EmitAttr,
   type EmitChild,
   type EmitCondition,
@@ -546,6 +548,55 @@ function expandChild(child: EmitChild, context: ExpandContext): JsxNode[] {
       }
 
       return element('a', attrs, [{ kind: 'text', value: item.label }]);
+    });
+  }
+
+  if ('tabItems' in child) {
+    const { node } = context;
+    const spec = child.tabItems;
+    staticOnly(context, 'the tab strip', [spec.items, spec.active]);
+
+    const items = parseOptions(asString(readProp(node, spec.items)));
+    const current = selectedOption(items, asString(readProp(node, spec.active)));
+
+    return items.map((item) => {
+      const active = item === current;
+      const attrs: JsxAttr[] = [
+        { name: 'type', kind: 'string', value: 'button' },
+        classed('ub-tab'),
+        { name: 'role', kind: 'string', value: 'tab' },
+        { name: 'aria-selected', kind: 'string', value: active ? 'true' : 'false' },
+      ];
+      // Present or absent, like `navItems` and for the same reason — the rule in `css.ts`
+      // is `:where([data-active])`, which is written against presence.
+      if (active) attrs.push({ name: 'data-active', kind: 'string', value: '' });
+
+      return element('button', attrs, [{ kind: 'text', value: item.label }]);
+    });
+  }
+
+  if ('disclosures' in child) {
+    const { node } = context;
+    const spec = child.disclosures;
+    staticOnly(context, 'the disclosure list', [spec.items, spec.open]);
+    const openFirst = spec.open !== undefined && asBoolean(readProp(node, spec.open));
+
+    return parseDisclosures(asString(readProp(node, spec.items))).map((item, index) => {
+      const attrs: JsxAttr[] = [classed('ub-accordion-item')];
+      if (openFirst && index === 0) attrs.push({ name: 'open', kind: 'bare' });
+
+      return element('details', attrs, [
+        element(
+          'summary',
+          [classed('ub-accordion-summary')],
+          [{ kind: 'text', value: item.title }],
+        ),
+        // A row with nothing under it is a summary and no panel, rather than an empty
+        // panel holding its padding open.
+        ...(item.body === ''
+          ? []
+          : [element('div', [classed('ub-accordion-body')], [{ kind: 'text', value: item.body }])]),
+      ]);
     });
   }
 

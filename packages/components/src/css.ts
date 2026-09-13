@@ -1580,6 +1580,924 @@ body {
     opacity: 0.55;
   }
 }
+
+/* --- Status colours -----------------------------------------------------------
+   The two colours the shadcn token set does not carry. Everything else in this
+   sheet is a theme token, so these are declared once and named rather than written
+   into four component rules — a project that wants its own success green overrides
+   one custom property instead of hunting for every place a literal was typed. */
+
+:root {
+  --ub-success: hsl(142 71% 36%);
+  --ub-warning: hsl(38 92% 42%);
+}
+
+/* --- Code block --------------------------------------------------------------
+   The frame, not the highlighting: a tokenizer and a theme are what an exported
+   project would then be shipping, and a design tool can be honest about the frame.
+   The <pre> scrolls rather than the block growing, so a long line cannot push the
+   column it sits in wider than the page. */
+
+.ub-code-block {
+  display: flex;
+  flex-direction: column;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.ub-code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 8px 12px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ub-code-block-name {
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ub-code-block-language {
+  flex: none;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ub-code-block-pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+
+.ub-code-block-code {
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre;
+}
+
+.ub-code-block:where([data-wrap]) .ub-code-block-code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* --- Tool call ---------------------------------------------------------------
+   One status property moves the dot, the word and the border together, set on the
+   details and read by the parts — the same inheritance trick .ub-table uses, and
+   for the same reason: a descendant selector qualified by the status would weigh
+   two classes and out-specify the rule the inspector writes. */
+
+.ub-tool-call {
+  --ub-tool-status: var(--muted-foreground);
+
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.ub-tool-call:where([data-status='running']) { --ub-tool-status: var(--ub-warning); }
+.ub-tool-call:where([data-status='success']) { --ub-tool-status: var(--ub-success); }
+.ub-tool-call:where([data-status='error']) { --ub-tool-status: var(--destructive); }
+
+.ub-tool-call-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+  list-style: none;
+}
+
+/* Safari draws its own triangle from a pseudo-element no other engine has. */
+.ub-tool-call-summary::-webkit-details-marker {
+  display: none;
+}
+
+.ub-tool-call-summary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.ub-tool-call-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--ub-tool-status);
+}
+
+.ub-tool-call-name {
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ub-tool-call-state {
+  margin-left: auto;
+  color: var(--ub-tool-status);
+  font-size: 12px;
+}
+
+.ub-tool-call-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 12px 12px;
+}
+
+.ub-tool-call-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ub-tool-call-label {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ub-tool-call-code {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--muted);
+  border-radius: var(--radius-sm);
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* --- Citation ----------------------------------------------------------------
+   Inline and baseline-aligned, because a citation belongs in a sentence rather
+   than beside one. SourceCard is the same fact given a block of its own. */
+
+.ub-citation {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px 1px 3px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  line-height: 1.5;
+  text-decoration: none;
+  vertical-align: baseline;
+  transition:
+    color 150ms ease,
+    border-color 150ms ease;
+}
+
+.ub-citation:hover {
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+.ub-citation:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.ub-citation-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 16px;
+  height: 16px;
+  background: var(--background);
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ub-citation-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Source card -------------------------------------------------------------
+   The whole card is the link, so the target is its area rather than four words
+   inside it — which is what someone on a phone is aiming at. */
+
+.ub-source-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  text-decoration: none;
+  transition: border-color 150ms ease;
+}
+
+.ub-source-card:hover {
+  border-color: var(--ring);
+}
+
+.ub-source-card:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.ub-source-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ub-source-card-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 18px;
+  height: 18px;
+  background: var(--muted);
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ub-source-card-source {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ub-source-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.ub-source-card-snippet {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* --- Alert -------------------------------------------------------------------
+   The icon is an empty span the sheet fills, so one piece of markup covers four
+   states and an export still ships no icon set. The accent is a custom property
+   for .ub-table's reason: it inherits down to the parts, and inheritance has no
+   specificity to lose against the rule the inspector writes. */
+
+.ub-alert {
+  --ub-alert-accent: var(--muted-foreground);
+  --ub-alert-glyph: 'i';
+
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--ub-alert-accent) 8%, var(--background));
+  color: var(--foreground);
+  border: 1px solid color-mix(in srgb, var(--ub-alert-accent) 28%, transparent);
+  border-radius: var(--radius-md);
+}
+
+.ub-alert:where([data-variant='info']) {
+  --ub-alert-accent: var(--muted-foreground);
+  --ub-alert-glyph: 'i';
+}
+
+.ub-alert:where([data-variant='success']) {
+  --ub-alert-accent: var(--ub-success);
+  --ub-alert-glyph: '\\2713';
+}
+
+.ub-alert:where([data-variant='warning']) {
+  --ub-alert-accent: var(--ub-warning);
+  --ub-alert-glyph: '!';
+}
+
+.ub-alert:where([data-variant='danger']) {
+  --ub-alert-accent: var(--destructive);
+  --ub-alert-glyph: '\\00d7';
+}
+
+.ub-alert-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  background: var(--ub-alert-accent);
+  border-radius: var(--radius-full);
+  color: var(--background);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.ub-alert-icon::before {
+  content: var(--ub-alert-glyph);
+}
+
+.ub-alert-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ub-alert-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.ub-alert-text {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* --- Progress ----------------------------------------------------------------
+   A native <progress>, so a screen reader is told what it is without an aria prop
+   being typed. Styling it is pseudo-elements, one set per engine — appearance:
+   none is what stops the platform bar being drawn under them. */
+
+.ub-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ub-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ub-progress-label {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.ub-progress-value {
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.ub-progress-bar {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 8px;
+  background: var(--muted);
+  border: 0;
+  border-radius: var(--radius-full);
+  color: var(--primary);
+  overflow: hidden;
+}
+
+.ub-progress-bar::-webkit-progress-bar {
+  background: var(--muted);
+  border-radius: var(--radius-full);
+}
+
+.ub-progress-bar::-webkit-progress-value {
+  background: var(--primary);
+  border-radius: var(--radius-full);
+}
+
+.ub-progress-bar::-moz-progress-bar {
+  background: var(--primary);
+  border-radius: var(--radius-full);
+}
+
+/* --- Breadcrumb --------------------------------------------------------------
+   The separator is a pseudo-element on every crumb but the first, so there is no
+   chevron anyone can select, restyle or delete out of one breadcrumb on one page.
+   :where() around the :not() keeps it at a single class of weight. */
+
+.ub-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.ub-breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted-foreground);
+  text-decoration: none;
+  transition: color 150ms ease;
+}
+
+.ub-breadcrumb-item:where(:not(:first-child))::before {
+  content: '';
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-top: 1.5px solid var(--border);
+  border-right: 1.5px solid var(--border);
+  transform: rotate(45deg);
+}
+
+.ub-breadcrumb-item:hover {
+  color: var(--foreground);
+}
+
+.ub-breadcrumb-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.ub-breadcrumb-item:where([data-active]) {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+/* --- Scroll area -------------------------------------------------------------
+   The scrollbar is the browser's. Styling one is a per-platform decision a design
+   tool should not make for its author, and a rule here would be one an exported
+   project could not undo without knowing this file exists. */
+
+.ub-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow: hidden;
+}
+
+.ub-scroll:where([data-axis='vertical']) {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.ub-scroll:where([data-axis='horizontal']) {
+  flex-direction: row;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.ub-scroll:where([data-axis='both']) {
+  overflow: auto;
+}
+
+/* --- Modal -------------------------------------------------------------------
+   A stage in normal flow — a dimmed area with a panel centred in it — rather than
+   a fixed overlay. Fixed, it would cover the page being designed and sit outside
+   every rect the canvas hit-tests against, so it would be a component nobody could
+   select; pinning it is a position and an inset in the Design tab, and both land on
+   this root element. The stage is a flex *column* so that the axis the editor reads
+   off it is the axis its body actually stacks along. */
+
+.ub-modal {
+  --ub-modal-width: 480px;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+}
+
+.ub-modal:where([data-size='sm']) { --ub-modal-width: 360px; }
+.ub-modal:where([data-size='md']) { --ub-modal-width: 480px; }
+.ub-modal:where([data-size='lg']) { --ub-modal-width: 640px; }
+
+.ub-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--foreground) 45%, transparent);
+  border-radius: inherit;
+}
+
+.ub-modal-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: var(--ub-modal-width);
+  padding: var(--space-6);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent),
+    0 12px 32px color-mix(in srgb, var(--foreground) 14%, transparent);
+}
+
+.ub-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.ub-modal-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ub-modal-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.ub-modal-description {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.ub-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* --- Drawer ------------------------------------------------------------------
+   Modal with the panel pushed into a corner. One side attribute decides which
+   corner, which measurement size means and which edge is rounded — the four
+   declarations someone would otherwise revisit every time they changed their mind
+   about the edge it comes from. */
+
+.ub-drawer {
+  --ub-drawer-size: 360px;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.ub-drawer:where([data-size='sm']) { --ub-drawer-size: 280px; }
+.ub-drawer:where([data-size='md']) { --ub-drawer-size: 360px; }
+.ub-drawer:where([data-size='lg']) { --ub-drawer-size: 480px; }
+
+.ub-drawer:where([data-side='right']) { align-items: flex-end; }
+.ub-drawer:where([data-side='left']) { align-items: flex-start; }
+.ub-drawer:where([data-side='top']) { justify-content: flex-start; }
+.ub-drawer:where([data-side='bottom']) { justify-content: flex-end; }
+
+.ub-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--foreground) 45%, transparent);
+}
+
+.ub-drawer-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  box-shadow: 0 0 32px color-mix(in srgb, var(--foreground) 14%, transparent);
+}
+
+/* A side drawer is full height and as wide as its size; a top or bottom one is the
+   other way round. flex: 1 rather than height: 100% so the panel fills the stage
+   whatever padding the design puts on it. */
+.ub-drawer:where([data-side='right']) .ub-drawer-panel,
+.ub-drawer:where([data-side='left']) .ub-drawer-panel {
+  flex: 1;
+  width: var(--ub-drawer-size);
+  max-width: 100%;
+}
+
+.ub-drawer:where([data-side='top']) .ub-drawer-panel,
+.ub-drawer:where([data-side='bottom']) .ub-drawer-panel {
+  width: 100%;
+  height: var(--ub-drawer-size);
+  max-height: 100%;
+}
+
+.ub-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.ub-drawer-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.ub-drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  overflow: auto;
+}
+
+/* One shape for both close controls: the same button, and stating it once is what
+   keeps it the same after the next edit to either component. */
+.ub-modal-close,
+.ub-drawer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin: -2px -2px 0 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  font-family: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.ub-modal-close:hover,
+.ub-drawer-close:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.ub-modal-close:focus-visible,
+.ub-drawer-close:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* --- Tooltip -----------------------------------------------------------------
+   Shown by CSS rather than by state: :hover for the pointer, :focus-within for the
+   keyboard, and no JavaScript in the export. pointer-events: none on the bubble so
+   it cannot swallow the click meant for what it describes. */
+
+.ub-tooltip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ub-tooltip-trigger {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ub-tooltip-bubble {
+  position: absolute;
+  z-index: 1;
+  width: max-content;
+  max-width: 220px;
+  padding: 5px 9px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+
+.ub-tooltip:where([data-side='top']) .ub-tooltip-bubble {
+  bottom: 100%;
+  left: 50%;
+  transform: translate(-50%, -6px);
+}
+
+.ub-tooltip:where([data-side='bottom']) .ub-tooltip-bubble {
+  top: 100%;
+  left: 50%;
+  transform: translate(-50%, 6px);
+}
+
+.ub-tooltip:where([data-side='left']) .ub-tooltip-bubble {
+  right: 100%;
+  top: 50%;
+  transform: translate(-6px, -50%);
+}
+
+.ub-tooltip:where([data-side='right']) .ub-tooltip-bubble {
+  left: 100%;
+  top: 50%;
+  transform: translate(6px, -50%);
+}
+
+.ub-tooltip:hover .ub-tooltip-bubble,
+.ub-tooltip:focus-within .ub-tooltip-bubble,
+.ub-tooltip:where([data-visible]) .ub-tooltip-bubble {
+  opacity: 1;
+}
+
+/* --- Tabs --------------------------------------------------------------------
+   Two variants of the same strip: a rule under the row, or a filled pill in a
+   tray. The current tab is data-active, present or absent, which is the same
+   spelling navItems uses for the current link. */
+
+.ub-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.ub-tabs-list {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.ub-tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  color: var(--muted-foreground);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
+}
+
+.ub-tab:hover {
+  color: var(--foreground);
+}
+
+.ub-tab:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.ub-tabs:where([data-variant='line']) .ub-tabs-list {
+  border-bottom: 1px solid var(--border);
+}
+
+/* The negative margin is what puts the tab's own underline on top of the list's
+   rule rather than a pixel below it. */
+.ub-tabs:where([data-variant='line']) .ub-tab {
+  margin-bottom: -1px;
+  padding: 8px 2px;
+  border-bottom: 2px solid transparent;
+}
+
+.ub-tabs:where([data-variant='line']) .ub-tab:where([data-active]) {
+  color: var(--foreground);
+  border-bottom-color: var(--primary);
+}
+
+.ub-tabs:where([data-variant='pill']) .ub-tabs-list {
+  gap: 2px;
+  padding: 3px;
+  background: var(--muted);
+  border-radius: var(--radius-md);
+}
+
+.ub-tabs:where([data-variant='pill']) .ub-tab {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+}
+
+.ub-tabs:where([data-variant='pill']) .ub-tab:where([data-active]) {
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+.ub-tabs-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* --- Accordion ---------------------------------------------------------------
+   Native <details> rows, which is what makes this one node and what lets the
+   export open and close with nothing wired up. The chevron is a pseudo-element
+   drawn from two borders, so no icon set is shipped for it. */
+
+.ub-accordion {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.ub-accordion-item {
+  border-bottom: 1px solid var(--border);
+}
+
+.ub-accordion-item:where(:last-child) {
+  border-bottom: 0;
+}
+
+.ub-accordion-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 12px 14px;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  cursor: pointer;
+  list-style: none;
+}
+
+.ub-accordion-summary::-webkit-details-marker {
+  display: none;
+}
+
+.ub-accordion-summary:hover {
+  background: var(--muted);
+}
+
+.ub-accordion-summary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.ub-accordion-summary::after {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-right: 3px;
+  border-right: 1.5px solid var(--muted-foreground);
+  border-bottom: 1.5px solid var(--muted-foreground);
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 150ms ease;
+}
+
+.ub-accordion-item:where([open]) .ub-accordion-summary::after {
+  transform: translateY(2px) rotate(-135deg);
+}
+
+.ub-accordion-body {
+  padding: 0 14px 14px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
 `.trim();
 
 /**
