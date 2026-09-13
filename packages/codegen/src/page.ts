@@ -29,6 +29,7 @@ import {
   type Theme,
 } from '@ui-builder/schema';
 import { element, printJsx, stringLiteral, type JsxNode } from './ir.js';
+import { resolveIntegrationRequest, type ExportIntegrations } from './integrations.js';
 import {
   NAVIGATE_MODULE,
   QUERY_MODULE,
@@ -82,6 +83,12 @@ export interface PageOutput {
   runtime: RuntimeModule[];
   /** Components the document names that the library no longer has. */
   warnings: string[];
+  /**
+   * Environment variables this page's requests read — the tokens of the workspace
+   * connections it calls. The project writer turns these into `.env.example`, which is
+   * how someone handed the export learns what to supply.
+   */
+  envVars: string[];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -114,27 +121,85 @@ function stateDeclaration(page: Page, body: string): string | null {
   return `const ${binding} = useState<Record<string, any>>(${objectLiteral(fields, '  ')});`;
 }
 
+/**
+ * A query's request, flattened to the fields `useQuery` takes.
+ *
+ * Both source kinds collapse to the same shape here, which is the point: an integration
+ * query has had its connection folded in and its two template layers composed into one
+ * (`resolveIntegrationRequest`), so from this line down there is no such thing as an
+ * integration — only a method, a URL and some headers, exactly like a query someone typed
+ * out by hand. The export therefore contains no integration machinery at all.
+ */
+interface FlatRequest {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body: string | undefined;
+  authHeader?: { name: string; code: string };
+  authQuery?: { name: string; code: string };
+}
+
+function flattenSource(
+  query: QueryDef,
+  context: QueryContext,
+): { request: FlatRequest; tokenConst?: string } | { skipped: string } {
+  const { source } = query;
+
+  if (source.kind === 'url') {
+    return {
+      request: {
+        method: source.method,
+        url: source.url,
+        headers: source.headers ?? {},
+        body: source.body,
+      },
+    };
+  }
+
+  const resolved = resolveIntegrationRequest(source, context.integrations);
+  if (!resolved.ok) {
+    return { skipped: resolved.reason };
+  }
+
+  const { authHeader, authQuery, tokenConst, ...rest } = resolved.request;
+
+  return {
+    request: {
+      ...rest,
+      ...(authHeader ? { authHeader } : {}),
+      ...(authQuery ? { authQuery } : {}),
+    },
+    ...(tokenConst ? { tokenConst } : {}),
+  };
+}
+
 /** One query as the `useQuery` argument that describes it. */
 function requestLiteral(
-  query: QueryDef,
+  request: FlatRequest,
   runOnLoad: boolean,
   helpers: Helpers,
   indent: string,
 ): string {
-  const fields = [
-    `method: ${stringLiteral(query.method)}`,
-    `url: ${textExpression(query.url, helpers)}`,
-  ];
+  // An API key in the query string is appended as code rather than folded into the
+  // template, because the token is a constant this file declares and a template cannot
+  // name one. Encoded the same way the runtime encodes it.
+  const url = request.authQuery
+    ? `${textExpression(request.url, helpers)} + ${stringLiteral(
+        `${request.url.includes('?') ? '&' : '?'}${encodeURIComponent(request.authQuery.name)}=`,
+      )} + encodeURIComponent(${request.authQuery.code})`
+    : textExpression(request.url, helpers);
 
-  const headers = Object.entries(query.headers ?? {});
-  if (headers.length > 0) {
-    fields.push(
-      `headers: { ${headers
-        .map(([name, value]) => `${objectKey(name)}: ${textExpression(value, helpers)}`)
-        .join(', ')} }`,
-    );
+  const fields = [`method: ${stringLiteral(request.method)}`, `url: ${url}`];
+
+  const headers = Object.entries(request.headers).map(
+    ([name, value]) => `${objectKey(name)}: ${textExpression(value, helpers)}`,
+  );
+  if (request.authHeader) {
+    headers.push(`${objectKey(request.authHeader.name)}: ${request.authHeader.code}`);
   }
-  if (query.body !== undefined) fields.push(`body: ${textExpression(query.body, helpers)}`);
+  if (headers.length > 0) fields.push(`headers: { ${headers.join(', ')} }`);
+
+  if (request.body !== undefined) fields.push(`body: ${textExpression(request.body, helpers)}`);
   fields.push(`runOnLoad: ${runOnLoad}`);
 
   // Always broken across lines: a request is the one thing in a generated page someone
@@ -150,26 +215,50 @@ function requestLiteral(
  * is unusual but not meaningless — so those become bare calls, and a query that neither
  * runs nor is read is left out entirely, because it would do nothing at all.
  */
-function queryDeclarations(page: Page, body: string, helpers: Helpers): string[] {
+function queryDeclarations(
+  page: Page,
+  body: string,
+  helpers: Helpers,
+  context: QueryContext,
+): string[] {
   if (page.queries.length === 0) return [];
 
   const cyclic = cyclicQueries(page.queries);
   const runs = (query: QueryDef): boolean => query.runOnLoad && !cyclic.has(query.id);
 
+  /**
+   * Flattened once, up front, because a query that cannot be resolved must be left out of
+   * *both* branches below and reported exactly once. Emitting it with an empty URL would
+   * be the silent failure this generator spends its warnings avoiding.
+   */
+  const resolved = page.queries.flatMap((query) => {
+    const flat = flattenSource(query, context);
+    if ('skipped' in flat) {
+      context.warnings.push(
+        `Query "${query.name}" was left out of the export because ${flat.skipped}.`,
+      );
+      return [];
+    }
+    if (flat.tokenConst) context.tokens.add(flat.tokenConst);
+    return [{ query, request: flat.request }];
+  });
+
+  if (resolved.length === 0) return [];
+
   // Indentation here is relative: `generatePage` indents every preamble statement by one
   // level when it assembles the component body, so these are written at column zero.
   if (!reads(body, 'queries')) {
-    return page.queries
-      .filter(runs)
+    return resolved
+      .filter((entry) => runs(entry.query))
       .map(
-        (query) =>
-          `// ${query.name} — sent on load; nothing on this page reads its result.\nuseQuery(${requestLiteral(query, true, helpers, '')});`,
+        (entry) =>
+          `// ${entry.query.name} — sent on load; nothing on this page reads its result.\nuseQuery(${requestLiteral(entry.request, true, helpers, '')});`,
       );
   }
 
-  const fields = page.queries.map(
-    (query) =>
-      `${objectKey(query.name)}: useQuery(${requestLiteral(query, runs(query), helpers, '  ')})`,
+  const fields = resolved.map(
+    (entry) =>
+      `${objectKey(entry.query.name)}: useQuery(${requestLiteral(entry.request, runs(entry.query), helpers, '  ')})`,
   );
 
   return [`const queries = {\n${fields.map((field) => `  ${field},`).join('\n')}\n};`];
@@ -179,11 +268,32 @@ function queryDeclarations(page: Page, body: string, helpers: Helpers): string[]
 /* Assembly                                                                    */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * What resolving a page's queries needs, and what it produces on the side.
+ *
+ * `warnings` and `tokens` are collected rather than returned because they belong to the
+ * *project*, not the page: a missing connection is one warning for the person exporting,
+ * and a token constant is declared once in the module regardless of how many queries on
+ * the page read it.
+ */
+interface QueryContext {
+  integrations: ExportIntegrations;
+  warnings: string[];
+  tokens: Set<string>;
+}
+
 export interface GeneratePageOptions {
   /** Overrides the name derived from `page.name`, for de-duplication across pages. */
   name?: string;
   /** The document's symbols, with the names the project settled on for them. */
   symbols?: readonly SymbolTarget[];
+  /**
+   * The workspace connections this document's queries reference, resolved at generation
+   * time. Absent means none are available, which turns every integration query into a
+   * warning rather than a broken request — the right answer for a caller that has no
+   * workspace context, such as a unit test over a document alone.
+   */
+  integrations?: ExportIntegrations;
 }
 
 export function generatePage(
@@ -231,10 +341,16 @@ export function generatePage(
   const markup = printJsx(body, 2);
   const scanned = [...statements, markup].join('\n');
 
+  const queryContext: QueryContext = {
+    integrations: options.integrations ?? {},
+    warnings: [],
+    tokens: new Set(),
+  };
+
   const preamble: string[] = [];
   const state = stateDeclaration(page, scanned);
   if (state) preamble.push(state);
-  preamble.push(...queryDeclarations(page, scanned, walk.helpers));
+  preamble.push(...queryDeclarations(page, scanned, walk.helpers, queryContext));
   // After the two above, so an overlay seeded from a binding can read them — it is an
   // expression like any other, and the names it may mention are already in scope.
   const overlays = overlayDeclaration(walk);
@@ -299,6 +415,21 @@ export function generatePage(
   }
   const imports = lines.length > 0 ? `${lines.join('\n')}\n\n` : '';
 
+  /*
+   * Token constants sit at module scope, above the component, because they are
+   * configuration and not state: they do not change between renders, and reading them
+   * inside the component would suggest they might. Sorted, so the same page always writes
+   * the same file.
+   *
+   * `?? ''` rather than a throw. A deployment that forgot a variable then sends an
+   * unauthenticated request and gets a 401 back from the API it was calling — which names
+   * the connection that is misconfigured. Throwing on boot gives a white screen instead.
+   */
+  const tokenLines = [...queryContext.tokens]
+    .sort()
+    .map((constName) => `const ${constName} = import.meta.env.VITE_${constName} ?? '';`);
+  const tokens = tokenLines.length > 0 ? `${tokenLines.join('\n')}\n\n` : '';
+
   const declarations =
     preamble.length === 0
       ? ''
@@ -311,7 +442,7 @@ export function generatePage(
           )
           .join('\n\n')}\n\n`;
 
-  const tsx = `${imports}export function ${name}() {\n${declarations}  return (\n${markup}\n  );\n}\n`;
+  const tsx = `${imports}${tokens}export function ${name}() {\n${declarations}  return (\n${markup}\n  );\n}\n`;
 
   return {
     name,
@@ -320,6 +451,7 @@ export function generatePage(
     usesStyles: walk.usedStyles,
     modules,
     runtime,
-    warnings: walk.warnings,
+    warnings: [...walk.warnings, ...queryContext.warnings],
+    envVars: [...queryContext.tokens].sort().map((constName) => `VITE_${constName}`),
   };
 }

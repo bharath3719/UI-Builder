@@ -270,7 +270,12 @@ describe('handlers', () => {
       type: 'Button',
       name: 'Reload',
       queries: [
-        { id: 'q1', name: 'people', method: 'GET', url: 'https://x.test/p', runOnLoad: false },
+        {
+          id: 'q1',
+          name: 'people',
+          runOnLoad: false,
+          source: { kind: 'url', method: 'GET', url: 'https://x.test/p' },
+        },
       ],
       events: { onClick: [{ kind: 'runQuery', queryId: 'q1' }] },
     });
@@ -296,7 +301,12 @@ describe('repeat and showIf', () => {
         },
       },
       queries: [
-        { id: 'q1', name: 'people', method: 'GET', url: 'https://x.test/p', runOnLoad: true },
+        {
+          id: 'q1',
+          name: 'people',
+          runOnLoad: true,
+          source: { kind: 'url', method: 'GET', url: 'https://x.test/p' },
+        },
       ],
     });
 
@@ -345,9 +355,8 @@ describe('queries', () => {
         {
           id: 'q1',
           name: 'people',
-          method: 'GET',
-          url: 'https://x.test/p?q={{ state.q }}',
           runOnLoad: true,
+          source: { kind: 'url', method: 'GET', url: 'https://x.test/p?q={{ state.q }}' },
         },
       ],
     });
@@ -368,9 +377,12 @@ describe('queries', () => {
         {
           id: 'q1',
           name: 'people',
-          method: 'GET',
-          url: 'https://x.test/p?after={{ queries.people.data }}',
           runOnLoad: true,
+          source: {
+            kind: 'url',
+            method: 'GET',
+            url: 'https://x.test/p?after={{ queries.people.data }}',
+          },
         },
       ],
     });
@@ -383,7 +395,12 @@ describe('queries', () => {
       type: 'Text',
       props: { text: 'Hi' },
       queries: [
-        { id: 'q1', name: 'ping', method: 'GET', url: 'https://x.test/ping', runOnLoad: true },
+        {
+          id: 'q1',
+          name: 'ping',
+          runOnLoad: true,
+          source: { kind: 'url', method: 'GET', url: 'https://x.test/ping' },
+        },
       ],
     });
 

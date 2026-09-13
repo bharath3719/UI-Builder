@@ -66,6 +66,12 @@ const NO_SELECTION: readonly NodeId[] = Object.freeze([]);
 export interface StudioProjectRef {
   id: string;
   name: string;
+  /**
+   * The workspace this project belongs to. Carried so the Data panel can list the API
+   * connections a query may bind to — those are a workspace resource, and the studio has
+   * no other route to them.
+   */
+  workspaceId: string;
   /** The caller's role in the owning workspace — what decides read-only. */
   role: Role;
 }
@@ -189,6 +195,7 @@ export function StudioProvider({
   return (
     <StudioSession
       projectId={project.id}
+      workspaceId={project.workspaceId}
       history={history}
       setHistory={setHistory}
       persistence={persistence}
@@ -210,6 +217,7 @@ export function StudioProvider({
  */
 function StudioSession({
   projectId,
+  workspaceId,
   history,
   setHistory,
   persistence,
@@ -217,6 +225,7 @@ function StudioSession({
   children,
 }: {
   projectId: string;
+  workspaceId: string;
   history: History<ProjectDoc>;
   setHistory: React.Dispatch<React.SetStateAction<History<ProjectDoc> | null>>;
   persistence: Persistence;
@@ -624,6 +633,7 @@ function StudioSession({
   const value = useMemo(
     () => ({
       projectId,
+      workspaceId,
       doc,
       page,
       target: surface,
@@ -668,6 +678,7 @@ function StudioSession({
     }),
     [
       projectId,
+      workspaceId,
       doc,
       page,
       surface,

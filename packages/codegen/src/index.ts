@@ -10,6 +10,7 @@ export * from './ir.js';
 export * from './values.js';
 export * from './lib.js';
 export * from './expand.js';
+export * from './integrations.js';
 export * from './walk.js';
 export * from './page.js';
 export * from './symbol.js';

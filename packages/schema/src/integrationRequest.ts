@@ -15,8 +15,13 @@
  */
 
 import type { ApiAuth, ApiContentType, ApiHeaders } from './api/integrations.js';
-import type { HttpMethod } from './doc.js';
-import { evaluateTemplate, stringifyValue, type EvaluateExpression } from './expr.js';
+import type { HttpMethod, QuerySource } from './doc.js';
+import {
+  evaluateTemplate,
+  parseTemplate,
+  stringifyValue,
+  type EvaluateExpression,
+} from './expr.js';
 
 /** Just the parts of an integration a request is built from. */
 export interface RequestConnection {
@@ -202,4 +207,130 @@ export function buildIntegrationRequest(
  */
 export function variableEvaluator(variables: Readonly<Record<string, string>>): EvaluateExpression {
   return (code) => variables[code.trim()] ?? '';
+}
+
+/**
+ * Folds a page's variables into an endpoint's template, producing one template.
+ *
+ * `/users/{{ userId }}` with `{ userId: '{{ state.id }}' }` becomes `/users/{{ state.id }}`.
+ *
+ * This exists for the code generator. At run time the two layers are evaluated in turn —
+ * page scope for the variables, then the endpoint against their values — but an export has
+ * no integration catalogue to consult, so the layers have to be collapsed while the
+ * endpoint is still known. Doing it as a template-to-template rewrite rather than emitting
+ * a variables object plus an indirection is what keeps the generated request readable:
+ * the URL in the exported file is the URL, with the page's own expressions in it.
+ *
+ * A hole naming a variable the page did not supply collapses to empty, which is what the
+ * runtime does with it too.
+ */
+export function composeEndpointTemplate(
+  source: string,
+  variables: Readonly<Record<string, string>>,
+): string {
+  return parseTemplate(source)
+    .map((segment) =>
+      segment.kind === 'text' ? segment.text : (variables[segment.code.trim()] ?? ''),
+    )
+    .join('');
+}
+
+/* -------------------------------------------------------------------------- */
+/* Running a page query against a workspace integration                        */
+/* -------------------------------------------------------------------------- */
+
+/** One connection as the page needs it: how to call it, and what calls exist. */
+export interface CatalogEntry {
+  connection: RequestConnection;
+  endpoints: Readonly<Record<string, RequestEndpoint & { resultPath: string }>>;
+  /**
+   * The decrypted credential, or null when there is none — or when the viewer's role does
+   * not let them read it. Those two are deliberately the same value here: in both cases
+   * the request goes out without auth and the far end answers, which is one failure to
+   * explain rather than two.
+   */
+  secret: string | null;
+}
+
+/**
+ * Everything a page needs in order to run its integration queries, keyed by integration id.
+ *
+ * Supplied by whatever is hosting the renderer — the studio, the preview, the published
+ * page — and never read from the document, because a document must not carry credentials.
+ * An empty catalogue is a valid state (still loading, or a viewer who may not read tokens)
+ * and produces queries that report why rather than a renderer that throws.
+ */
+export type IntegrationCatalog = Readonly<Record<string, CatalogEntry>>;
+
+/** A built request, or the reason there isn't one. Never a throw: see `buildQueryRequest`. */
+export type QueryRequestResult =
+  { ok: true; request: BuiltRequest; resultPath: string } | { ok: false; error: string };
+
+/**
+ * Turns any query into a request, whichever kind of source it names.
+ *
+ * The two stages for an integration query are the point. A page supplies `variables` whose
+ * values are templates in *page* scope — `{{ state.userId }}` — so those are evaluated
+ * first, against the real scope. The endpoint's own templates are then resolved against
+ * the resulting flat map, exactly as the test-run route does it. That is what makes "it
+ * worked when I tested it" mean something: the same function, the same two stages.
+ *
+ * Failures are returned, not thrown. A connection deleted out from under a page is an
+ * ordinary thing that should show up as that query's `error` — a red badge on the node
+ * that reads it — rather than as a blank canvas.
+ */
+export function buildQueryRequest(
+  source: QuerySource,
+  catalog: IntegrationCatalog,
+  evaluate: EvaluateExpression,
+): QueryRequestResult {
+  if (source.kind === 'url') {
+    const headers: Record<string, string> = {};
+    for (const [name, value] of Object.entries(source.headers ?? {})) {
+      headers[name] = asText(value, evaluate);
+    }
+
+    const raw = source.body === undefined ? '' : asText(source.body, evaluate);
+
+    return {
+      ok: true,
+      request: {
+        method: source.method,
+        url: asText(source.url, evaluate),
+        headers,
+        body: sendsBody(source.method) && raw !== '' ? raw : undefined,
+      },
+      // A URL query has nowhere to record where its rows are; the binding says it instead.
+      resultPath: '',
+    };
+  }
+
+  const entry = catalog[source.integrationId];
+  if (!entry) {
+    return {
+      ok: false,
+      error: 'This query uses an API connection that is no longer available to this workspace.',
+    };
+  }
+
+  const endpoint = entry.endpoints[source.endpointId];
+  if (!endpoint) {
+    return { ok: false, error: 'The endpoint this query calls has been deleted.' };
+  }
+
+  const variables: Record<string, string> = {};
+  for (const [name, template] of Object.entries(source.variables ?? {})) {
+    variables[name] = asText(template, evaluate);
+  }
+
+  return {
+    ok: true,
+    request: buildIntegrationRequest(
+      entry.connection,
+      endpoint,
+      entry.secret,
+      variableEvaluator(variables),
+    ),
+    resultPath: endpoint.resultPath,
+  };
 }

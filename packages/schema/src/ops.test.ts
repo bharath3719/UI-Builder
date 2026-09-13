@@ -492,19 +492,53 @@ describe('state variables', () => {
 
 describe('queries', () => {
   it('creates, adds and updates one', () => {
-    const query = createQuery(fixture(), { name: 'users', url: '/api/users' });
+    const query = createQuery(fixture(), {
+      name: 'users',
+      source: { kind: 'url', method: 'GET', url: '/api/users' },
+    });
     const page = addQuery(fixture(), query);
 
-    expect(query).toMatchObject({ method: 'GET', runOnLoad: true });
+    expect(query).toMatchObject({ runOnLoad: true, source: { kind: 'url', method: 'GET' } });
     expect(page.queries).toHaveLength(1);
-    expect(updateQuery(page, query.id, { method: 'POST' }).queries[0]?.method).toBe('POST');
+
+    const patched = updateQuery(page, query.id, {
+      source: { kind: 'url', method: 'POST', url: '/api/users' },
+    });
+    expect(patched.queries[0]?.source).toMatchObject({ method: 'POST' });
     expect(() => addQuery(page, { ...createQuery(page), name: 'users' })).toThrow(/already in use/);
+  });
+
+  it('defaults to a plain URL request, since an integration needs a connection chosen', () => {
+    expect(createQuery(fixture()).source).toEqual({ kind: 'url', method: 'GET', url: '' });
   });
 
   it('omits the optional fields rather than storing them undefined', () => {
     // A query that never had a body must compare equal to one whose body was cleared.
-    expect('body' in createQuery(fixture())).toBe(false);
-    expect('headers' in createQuery(fixture())).toBe(false);
+    const { source } = createQuery(fixture());
+
+    expect('body' in source).toBe(false);
+    expect('headers' in source).toBe(false);
+  });
+
+  it('can be switched to call a workspace endpoint', () => {
+    const query = createQuery(fixture(), { name: 'users' });
+    const page = addQuery(fixture(), query);
+
+    const bound = updateQuery(page, query.id, {
+      source: {
+        kind: 'integration',
+        integrationId: 'int1',
+        endpointId: 'ep1',
+        variables: { userId: '{{ state.id }}' },
+      },
+    });
+
+    expect(bound.queries[0]?.source).toEqual({
+      kind: 'integration',
+      integrationId: 'int1',
+      endpointId: 'ep1',
+      variables: { userId: '{{ state.id }}' },
+    });
   });
 
   it('removing one takes the runQuery steps that pointed at it', () => {

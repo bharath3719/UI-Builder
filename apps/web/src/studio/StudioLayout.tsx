@@ -236,7 +236,12 @@ export function StudioLayout(props: {
       // viewport — is about *this* project, and resetting each of them by hand on a
       // prop change is a list that would be incomplete the first time one was added.
       key={project.id}
-      project={{ id: project.id, name: project.name, role: project.role }}
+      project={{
+        id: project.id,
+        name: project.name,
+        workspaceId: project.workspaceId,
+        role: project.role,
+      }}
       fallback={({ problem, retry }) =>
         problem ? (
           <ScreenMessage

@@ -234,11 +234,14 @@ describe('collectExpressions', () => {
         {
           id: 'q1',
           name: 'users',
-          method: 'GET',
-          url: '/api/users?q={{ state.name }}',
-          headers: { 'X-Tenant': '{{ state.name }}' },
-          body: '{{ state.name }}',
           runOnLoad: true,
+          source: {
+            kind: 'url',
+            method: 'GET',
+            url: '/api/users?q={{ state.name }}',
+            headers: { 'X-Tenant': '{{ state.name }}' },
+            body: '{{ state.name }}',
+          },
         },
       ],
     });

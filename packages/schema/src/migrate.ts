@@ -90,10 +90,64 @@ function toSchema3(doc: RawDoc): RawDoc {
   return { ...doc, symbols: Array.isArray(doc['symbols']) ? doc['symbols'] : [] };
 }
 
+/**
+ * 3 -> 4: a query's request moves under `source`, so it can be a workspace integration.
+ *
+ * Every stored query is the flat `{ method, url, headers?, body? }` shape, which is now
+ * `source: { kind: 'url', ... }`. The alternative considered and rejected was leaving the
+ * flat fields and adding an optional `endpointId` beside them — which would leave a `url`
+ * and a `method` on every integration query, meaning nothing and read by nobody. See the
+ * note on `QueryDef`.
+ *
+ * A query that cannot be read as either shape is dropped rather than failing the
+ * document, for the reason `cleanEvents` gives: `ProjectDocSchema` runs after this, so one
+ * malformed row would otherwise make a project un-openable. A page missing a query is
+ * visibly wrong and fixable; a project that will not open is neither.
+ */
+function toSchema4(doc: RawDoc): RawDoc {
+  const pages = Array.isArray(doc['pages']) ? doc['pages'] : [];
+
+  return {
+    ...doc,
+    pages: pages.map((page) => {
+      if (!isRecord(page)) return page;
+
+      const queries = Array.isArray(page['queries']) ? page['queries'] : [];
+
+      return {
+        ...page,
+        queries: queries.flatMap((query) => {
+          if (!isRecord(query)) return [];
+          // Already migrated — a document round-tripped through a newer build, or a
+          // fixture written at 4. Re-wrapping it would bury the source one level deeper.
+          if (isRecord(query['source'])) return [query];
+          if (typeof query['url'] !== 'string') return [];
+
+          const { method, url, headers, body, ...rest } = query;
+
+          return [
+            {
+              ...rest,
+              source: {
+                kind: 'url',
+                method: typeof method === 'string' ? method : 'GET',
+                url,
+                ...(isRecord(headers) ? { headers } : {}),
+                ...(typeof body === 'string' ? { body } : {}),
+              },
+            },
+          ];
+        }),
+      };
+    }),
+  };
+}
+
 /** `n` upgrades a document written at version `n` to version `n + 1`. */
 const MIGRATIONS: Record<number, (doc: RawDoc) => RawDoc> = {
   1: toSchema2,
   2: toSchema3,
+  3: toSchema4,
 };
 
 export class DocMigrationError extends Error {

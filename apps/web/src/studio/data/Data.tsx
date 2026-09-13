@@ -21,19 +21,24 @@ import {
   createStateVar,
   HTTP_METHODS,
   isValidVarName,
+  parseTemplate,
   removeQuery,
   removeStateVar,
   stateVarUsage,
   updateQuery,
   updateStateVar,
+  type ApiIntegrationSummary,
+  type IntegrationQuerySource,
   type Json,
   type Page,
   type QueryDef,
   type StateVar,
+  type UrlQuerySource,
 } from '@ui-builder/schema';
 import { cyclicQueries } from '@ui-builder/runtime';
 import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
+import { useIntegrations } from '../../api/queries.js';
 import { TemplateField } from '../expressions/ExpressionField.js';
 import { scopeSuggestions } from '../expressions/scope.js';
 import {
@@ -275,16 +280,19 @@ function StateList({ page }: { page: Page }) {
 /* Queries                                                                     */
 /* -------------------------------------------------------------------------- */
 
-/** Headers, edited as the pairs they are. */
-function HeadersEditor({ query }: { query: QueryDef }) {
+/** Headers, edited as the pairs they are. Only a URL query has its own. */
+function HeadersEditor({ query, source }: { query: QueryDef; source: UrlQuerySource }) {
   const { page, edit, writable } = useStudio();
-  const entries = Object.entries(query.headers ?? {});
+  const entries = Object.entries(source.headers ?? {});
 
   const write = (next: [string, string][]) => {
     const headers = Object.fromEntries(next.filter(([name]) => name !== ''));
     edit((current) =>
       updateQuery(current, query.id, {
-        headers: Object.keys(headers).length === 0 ? undefined : headers,
+        source: {
+          ...source,
+          ...(Object.keys(headers).length === 0 ? { headers: undefined } : { headers }),
+        },
       }),
     );
   };
@@ -349,15 +357,243 @@ function HeadersEditor({ query }: { query: QueryDef }) {
   );
 }
 
-function QueryCard({ page, query, cyclic }: { page: Page; query: QueryDef; cyclic: boolean }) {
+/**
+ * The request half of a query, when it calls a saved workspace endpoint.
+ *
+ * There is very little to edit here, and that is the point of the whole feature: the
+ * method, the path, the headers and the body were written once in workspace settings, so a
+ * page chooses a call and fills in its holes. The endpoint's shape is shown read-only
+ * rather than hidden, because "what will this actually request" is the question someone
+ * binding a table is really asking.
+ */
+function IntegrationSource({
+  page,
+  query,
+  source,
+  integrations,
+}: {
+  page: Page;
+  query: QueryDef;
+  source: IntegrationQuerySource;
+  integrations: ApiIntegrationSummary[];
+}) {
+  const { edit, writable } = useStudio();
+  const connectionId = useId();
+  const endpointId = useId();
+
+  const integration = integrations.find((one) => one.id === source.integrationId);
+  const endpoint = integration?.endpoints.find((one) => one.id === source.endpointId);
+
+  const patchSource = (changes: Partial<IntegrationQuerySource>) => {
+    edit((current) => updateQuery(current, query.id, { source: { ...source, ...changes } }));
+  };
+
+  /**
+   * The holes the chosen endpoint declares, across its path, body and header values.
+   *
+   * Read from the endpoint rather than from what this query already stores, so that adding
+   * a hole to the endpoint in workspace settings surfaces a new field here — instead of
+   * silently resolving to empty at run time on every page that calls it.
+   */
+  const holes = endpoint
+    ? [
+        ...new Set(
+          [endpoint.path, endpoint.body ?? '', ...Object.values(endpoint.headers)].flatMap(
+            (template) =>
+              parseTemplate(template)
+                .filter((segment) => segment.kind === 'expr')
+                .map((segment) => segment.code.trim())
+                .filter((name) => name !== ''),
+          ),
+        ),
+      ]
+    : [];
+
+  return (
+    <>
+      <div className={styles.field}>
+        <label className={styles.fieldLabel} htmlFor={connectionId}>
+          Connection
+        </label>
+        <select
+          id={connectionId}
+          className={styles.select}
+          value={source.integrationId}
+          disabled={!writable}
+          onChange={(event) => {
+            const next = integrations.find((one) => one.id === event.target.value);
+            // Changing connection invalidates the endpoint and every variable with it:
+            // those named holes belonging to the old endpoint. Keeping them would leave a
+            // query pointing at an endpoint on a different connection.
+            patchSource({
+              integrationId: event.target.value,
+              endpointId: next?.endpoints[0]?.id ?? '',
+              variables: {},
+            });
+          }}
+        >
+          {integration === undefined && (
+            <option value={source.integrationId}>This connection is no longer available</option>
+          )}
+          {integrations.map((one) => (
+            <option key={one.id} value={one.id}>
+              {one.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className={styles.field}>
+        <label className={styles.fieldLabel} htmlFor={endpointId}>
+          Endpoint
+        </label>
+        <select
+          id={endpointId}
+          className={styles.select}
+          value={source.endpointId}
+          disabled={!writable || integration === undefined}
+          onChange={(event) => patchSource({ endpointId: event.target.value, variables: {} })}
+        >
+          {endpoint === undefined && (
+            <option value={source.endpointId}>
+              {integration ? 'Choose an endpoint' : 'Unavailable'}
+            </option>
+          )}
+          {integration?.endpoints.map((one) => (
+            <option key={one.id} value={one.id}>
+              {one.method} {one.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {integration && endpoint && (
+        <p className={styles.requestPreview}>
+          <span className={styles.requestMethod}>{endpoint.method}</span>
+          {integration.baseUrl}
+          {endpoint.path}
+        </p>
+      )}
+
+      {holes.map((name) => (
+        <div key={name} className={styles.field}>
+          <span className={styles.fieldLabel}>{name}</span>
+          <TemplateField
+            value={source.variables?.[name] ?? ''}
+            suggestions={scopeSuggestions(page)}
+            disabled={!writable}
+            placeholder="{{ state.something }}"
+            onCommit={(value) =>
+              patchSource({ variables: { ...(source.variables ?? {}), [name]: value } })
+            }
+          />
+        </div>
+      ))}
+
+      {endpoint && endpoint.resultPath !== '' && (
+        <p className={styles.hint}>
+          Rows are at <code>{endpoint.resultPath}</code>.
+        </p>
+      )}
+    </>
+  );
+}
+
+/** The request half of a query someone is writing out by hand. */
+function UrlSource({
+  page,
+  query,
+  source,
+}: {
+  page: Page;
+  query: QueryDef;
+  source: UrlQuerySource;
+}) {
   const urlId = useId();
   const bodyId = useId();
-  const runId = useId();
   const { edit, writable } = useStudio();
 
   const suggestions = scopeSuggestions(page);
+  const patchSource = (changes: Partial<UrlQuerySource>) => {
+    edit((current) => updateQuery(current, query.id, { source: { ...source, ...changes } }));
+  };
+
+  return (
+    <>
+      <div className={styles.field}>
+        <label className={styles.fieldLabel} htmlFor={urlId}>
+          URL
+        </label>
+        <TemplateField
+          id={urlId}
+          value={source.url}
+          suggestions={suggestions}
+          disabled={!writable}
+          placeholder="/api/users?q={{ state.search }}"
+          onCommit={(url) => patchSource({ url })}
+        />
+      </div>
+
+      {source.method === 'GET' ? null : (
+        <div className={styles.field}>
+          <label className={styles.fieldLabel} htmlFor={bodyId}>
+            Body
+          </label>
+          <TemplateField
+            id={bodyId}
+            value={source.body ?? ''}
+            suggestions={suggestions}
+            disabled={!writable}
+            multiline
+            placeholder={'{ "name": "{{ state.name }}" }'}
+            onCommit={(body) => patchSource({ body: body === '' ? undefined : body })}
+          />
+        </div>
+      )}
+
+      <HeadersEditor query={query} source={source} />
+    </>
+  );
+}
+
+function QueryCard({
+  page,
+  query,
+  cyclic,
+  integrations,
+}: {
+  page: Page;
+  query: QueryDef;
+  cyclic: boolean;
+  integrations: ApiIntegrationSummary[];
+}) {
+  const runId = useId();
+  const { edit, writable } = useStudio();
+
   const patch = (changes: Partial<Omit<QueryDef, 'id'>>) => {
     edit((current) => updateQuery(current, query.id, changes));
+  };
+
+  /**
+   * Switching kind replaces the source outright rather than merging.
+   *
+   * The two arms share no fields, so a merge would carry a `url` onto an integration
+   * source — the half-valid shape the document model was restructured to make
+   * unrepresentable. Losing the old request is the honest cost of changing your mind, and
+   * an undo brings it back.
+   */
+  const switchKind = (kind: QueryDef['source']['kind']) => {
+    if (kind === query.source.kind) return;
+    patch({
+      source:
+        kind === 'url'
+          ? { kind: 'url', method: 'GET', url: '' }
+          : {
+              kind: 'integration',
+              integrationId: integrations[0]?.id ?? '',
+              endpointId: integrations[0]?.endpoints[0]?.id ?? '',
+            },
+    });
   };
 
   return (
@@ -372,17 +608,37 @@ function QueryCard({ page, query, cyclic }: { page: Page; query: QueryDef; cycli
 
         <select
           className={styles.type}
-          value={query.method}
+          value={query.source.kind}
           disabled={!writable}
-          aria-label={`${query.name} method`}
-          onChange={(event) => patch({ method: event.target.value as QueryDef['method'] })}
+          aria-label={`${query.name} request kind`}
+          onChange={(event) => switchKind(event.target.value as QueryDef['source']['kind'])}
         >
-          {HTTP_METHODS.map((method) => (
-            <option key={method} value={method}>
-              {method}
-            </option>
-          ))}
+          <option value="integration">Endpoint</option>
+          <option value="url">URL</option>
         </select>
+
+        {query.source.kind === 'url' && (
+          <select
+            className={styles.type}
+            value={query.source.method}
+            disabled={!writable}
+            aria-label={`${query.name} method`}
+            onChange={(event) =>
+              patch({
+                source: {
+                  ...(query.source as UrlQuerySource),
+                  method: event.target.value as UrlQuerySource['method'],
+                },
+              })
+            }
+          >
+            {HTTP_METHODS.map((method) => (
+              <option key={method} value={method}>
+                {method}
+              </option>
+            ))}
+          </select>
+        )}
 
         <button
           type="button"
@@ -397,38 +653,24 @@ function QueryCard({ page, query, cyclic }: { page: Page; query: QueryDef; cycli
       </div>
 
       <div className={styles.cardBody}>
-        <div className={styles.field}>
-          <label className={styles.fieldLabel} htmlFor={urlId}>
-            URL
-          </label>
-          <TemplateField
-            id={urlId}
-            value={query.url}
-            suggestions={suggestions}
-            disabled={!writable}
-            placeholder="/api/users?q={{ state.search }}"
-            onCommit={(url) => patch({ url })}
-          />
-        </div>
-
-        {query.method === 'GET' ? null : (
-          <div className={styles.field}>
-            <label className={styles.fieldLabel} htmlFor={bodyId}>
-              Body
-            </label>
-            <TemplateField
-              id={bodyId}
-              value={query.body ?? ''}
-              suggestions={suggestions}
-              disabled={!writable}
-              multiline
-              placeholder={'{ "name": "{{ state.name }}" }'}
-              onCommit={(body) => patch({ body: body === '' ? undefined : body })}
+        {query.source.kind === 'integration' ? (
+          integrations.length === 0 ? (
+            <p className={styles.warning}>
+              <AlertTriangle size={12} aria-hidden />
+              This workspace has no API connections yet. Add one from the workspace screen, or
+              switch this query to a plain URL.
+            </p>
+          ) : (
+            <IntegrationSource
+              page={page}
+              query={query}
+              source={query.source}
+              integrations={integrations}
             />
-          </div>
+          )
+        ) : (
+          <UrlSource page={page} query={query} source={query.source} />
         )}
-
-        <HeadersEditor query={query} />
 
         <label className={styles.toggle} htmlFor={runId}>
           <input
@@ -455,7 +697,15 @@ function QueryCard({ page, query, cyclic }: { page: Page; query: QueryDef; cycli
 }
 
 function QueryList({ page }: { page: Page }) {
-  const { edit, writable } = useStudio();
+  const { edit, writable, workspaceId } = useStudio();
+
+  /**
+   * The workspace's connections, so a query can name one.
+   *
+   * Read here rather than per card: every card offers the same list, and one fetch behind
+   * a shared cache is what keeps opening this panel from firing a request per query.
+   */
+  const integrations = useIntegrations(workspaceId).data ?? [];
 
   // The same check the runtime makes before auto-running one, so the panel and the
   // canvas cannot disagree about which query is refusing to run.
@@ -471,7 +721,25 @@ function QueryList({ page }: { page: Page }) {
           disabled={!writable}
           onClick={() =>
             edit((current) =>
-              addQuery(current, createQuery(current, { name: 'query', runOnLoad: true })),
+              addQuery(
+                current,
+                createQuery(current, {
+                  name: 'query',
+                  runOnLoad: true,
+                  // A workspace with connections gets one pre-selected, because binding to
+                  // a saved endpoint is the path this feature exists for; one without
+                  // falls back to the URL form rather than offering an empty picker.
+                  ...(integrations[0]
+                    ? {
+                        source: {
+                          kind: 'integration' as const,
+                          integrationId: integrations[0].id,
+                          endpointId: integrations[0].endpoints[0]?.id ?? '',
+                        },
+                      }
+                    : {}),
+                }),
+              ),
             )
           }
         >
@@ -489,7 +757,13 @@ function QueryList({ page }: { page: Page }) {
       ) : (
         <ul className={styles.cards}>
           {page.queries.map((query) => (
-            <QueryCard key={query.id} page={page} query={query} cyclic={cyclic.has(query.id)} />
+            <QueryCard
+              key={query.id}
+              page={page}
+              query={query}
+              cyclic={cyclic.has(query.id)}
+              integrations={integrations}
+            />
           ))}
         </ul>
       )}

@@ -14,6 +14,7 @@
 
 import { COMPONENT_CSS } from '@ui-builder/components';
 import { serializeTheme, toComponentName, type ProjectDoc } from '@ui-builder/schema';
+import type { ExportIntegrations } from './integrations.js';
 import { componentName, generatePage, type PageOutput } from './page.js';
 import { generateSymbol, type SymbolOutput } from './symbol.js';
 import type { SymbolTarget } from './walk.js';
@@ -33,6 +34,15 @@ export interface GeneratedProject {
 export interface GenerateOptions {
   /** `package.json` name. Defaults to a slug of the document's name. */
   packageName?: string;
+  /**
+   * The workspace API connections this document's queries call, resolved at generation
+   * time and carrying no credentials.
+   *
+   * Omitted means none are known, which turns every integration query into a warning
+   * rather than a broken request — the right answer for a caller with no workspace
+   * context, such as a test over a document alone.
+   */
+  integrations?: ExportIntegrations;
 }
 
 /**
@@ -264,7 +274,11 @@ export function generateProject(doc: ProjectDoc, options: GenerateOptions = {}):
     componentName,
   );
   const outputs: PageOutput[] = doc.pages.map((page, index) =>
-    generatePage(page, doc.theme, { name: names[index], symbols }),
+    generatePage(page, doc.theme, {
+      name: names[index],
+      symbols,
+      ...(options.integrations ? { integrations: options.integrations } : {}),
+    }),
   );
 
   const everything = [...symbolOutputs, ...outputs];
@@ -314,6 +328,30 @@ export function generateProject(doc: ProjectDoc, options: GenerateOptions = {}):
     { path: 'src/theme.css', contents: `${serializeTheme(doc.theme)}\n` },
     { path: 'src/library.css', contents: `${COMPONENT_CSS}\n` },
   ];
+
+  /*
+   * `.env.example`, and only when there is something to put in it.
+   *
+   * This is the file that makes an export handed to someone else runnable at all: the
+   * generated pages read their API tokens from `import.meta.env`, and without this the
+   * recipient has no way to learn which variables exist short of grepping the source.
+   *
+   * An example rather than a real `.env`, because a `.env` in a generated project is a
+   * file people commit — and the whole reason the token is a variable is to keep it out
+   * of the source someone else receives.
+   */
+  const envVars = [...new Set(outputs.flatMap((output) => output.envVars))].sort();
+  if (envVars.length > 0) {
+    files.push({
+      path: '.env.example',
+      contents: `${[
+        '# API tokens for the connections this project calls.',
+        '# Copy this to .env and fill them in. Vite only exposes variables prefixed VITE_.',
+        '',
+        ...envVars.map((name) => `${name}=`),
+      ].join('\n')}\n`,
+    });
+  }
 
   for (const output of outputs) {
     files.push({ path: `src/pages/${output.name}.tsx`, contents: output.tsx });

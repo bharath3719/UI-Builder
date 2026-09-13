@@ -239,32 +239,121 @@ export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
 export type HttpMethod = (typeof HTTP_METHODS)[number];
 
 /**
- * An HTTP data source — PLAN.md §10. Read in an expression as `queries.<name>`, which
- * carries `{ loading, data, error }` rather than the payload alone: a list that has to
- * say "loading" cannot do it from the rows.
+ * A request written out in full, on the query itself.
  *
  * `url`, `body` and every header value are template source, so `{{ state.userId }}`
- * interpolates into any of them.
+ * interpolates into any of them. This was the only kind of query before workspace
+ * integrations existed, and it stays because it is the right shape for a one-off call
+ * that no other page will ever make.
  */
-export interface QueryDef {
-  id: string;
-  name: string;
+export interface UrlQuerySource {
+  kind: 'url';
   method: HttpMethod;
   url: string;
   headers?: Record<string, string>;
   body?: string;
-  runOnLoad: boolean;
 }
 
-export const QueryDefSchema: z.ZodType<QueryDef> = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
+/**
+ * A call on an endpoint the workspace has already defined.
+ *
+ * The method, path, headers and body live on the `ApiEndpoint` rather than here, which is
+ * the entire point: they are written once for the team and every page that binds to them
+ * follows when they change. What the *page* supplies is `variables` — a value for each
+ * `{{ hole }}` the endpoint declares, as template source evaluated in this page's scope.
+ * That is how `/users/{{ userId }}` becomes "the user this page is about".
+ *
+ * Referenced by id, not by name, for the reason every other cross-reference in this model
+ * is: renaming "Acme CRM" must not break every page that calls it.
+ *
+ * Note what is *not* here: the base URL, the auth scheme and the token. A document never
+ * carries a credential, so a revision, a publish or an exported zip cannot leak one.
+ */
+export interface IntegrationQuerySource {
+  kind: 'integration';
+  integrationId: string;
+  endpointId: string;
+  variables?: Record<string, string>;
+}
+
+export type QuerySource = UrlQuerySource | IntegrationQuerySource;
+
+/**
+ * An HTTP data source — PLAN.md §10. Read in an expression as `queries.<name>`, which
+ * carries `{ loading, data, error }` rather than the payload alone: a list that has to
+ * say "loading" cannot do it from the rows.
+ *
+ * The request lives under `source` as a discriminated union rather than as flat fields
+ * with an optional `endpointId` beside them. The flat version would leave a `url` and a
+ * `method` sitting on every integration query, meaning nothing and read by no one — the
+ * half-valid shape `migrateDoc` exists to prevent. Here, "which kind of request is this"
+ * is one check that every reader makes once.
+ */
+export interface QueryDef {
+  id: string;
+  name: string;
+  runOnLoad: boolean;
+  source: QuerySource;
+}
+
+/*
+ * Left un-annotated, unlike most schemas in this file: `z.discriminatedUnion` needs the
+ * inferred object type to find the discriminant, and a `z.ZodType<T>` annotation erases
+ * exactly that. The `satisfies` below keeps the hand-written type honest without hiding
+ * the shape from the union.
+ */
+export const UrlQuerySourceSchema = z.object({
+  kind: z.literal('url'),
   method: z.enum(HTTP_METHODS),
   url: z.string(),
   headers: z.record(z.string(), z.string()).optional(),
   body: z.string().optional(),
-  runOnLoad: z.boolean(),
 });
+
+export const IntegrationQuerySourceSchema = z.object({
+  kind: z.literal('integration'),
+  integrationId: z.string().min(1),
+  endpointId: z.string().min(1),
+  variables: z.record(z.string(), z.string()).optional(),
+});
+
+export const QuerySourceSchema = z.discriminatedUnion('kind', [
+  UrlQuerySourceSchema,
+  IntegrationQuerySourceSchema,
+]) satisfies z.ZodType<QuerySource>;
+
+export const QueryDefSchema: z.ZodType<QueryDef> = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  runOnLoad: z.boolean(),
+  source: QuerySourceSchema,
+});
+
+/**
+ * Every template a query carries, whatever kind it is.
+ *
+ * One function because three callers need the same answer and must not disagree about it:
+ * the expression collector (what does this page reference?), the cycle detector (does this
+ * query read its own result?), and the studio's rename warnings. Adding a third source
+ * kind means editing this and nothing else.
+ */
+export function querySourceTemplates(source: QuerySource): { path: string; source: string }[] {
+  if (source.kind === 'integration') {
+    return Object.entries(source.variables ?? {}).map(([name, value]) => ({
+      path: `variables.${name}`,
+      source: value,
+    }));
+  }
+
+  return [
+    { path: 'url', source: source.url },
+    ...(source.body === undefined ? [] : [{ path: 'body', source: source.body }]),
+    ...Object.entries(source.headers ?? {}).map(([name, value]) => ({
+      path: `headers.${name}`,
+      source: value,
+    })),
+  ];
+}
 
 /**
  * A tree of nodes with a root — the unit every operation in `ops.ts` works on.
@@ -417,7 +506,7 @@ export function symbolIdOf(type: string): string | null {
 }
 
 /** Bumped whenever a change to these types needs a migration on load. */
-export const DOC_SCHEMA_VERSION = 3;
+export const DOC_SCHEMA_VERSION = 4;
 
 export interface ProjectDoc {
   schemaVersion: number;

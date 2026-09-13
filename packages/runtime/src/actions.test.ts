@@ -26,7 +26,14 @@ function pageWith(): Page {
       { id: COUNT, name: 'count', type: 'number', initial: 0 },
       { id: FLAG, name: 'flag', type: 'boolean', initial: false },
     ],
-    queries: [{ id: USERS, name: 'users', method: 'GET', url: '/api/users', runOnLoad: false }],
+    queries: [
+      {
+        id: USERS,
+        name: 'users',
+        runOnLoad: false,
+        source: { kind: 'url', method: 'GET', url: '/api/users' },
+      },
+    ],
   });
 }
 

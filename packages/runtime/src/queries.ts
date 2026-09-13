@@ -13,11 +13,11 @@
  */
 
 import {
+  buildQueryRequest,
   cyclicQueries,
-  evaluateTemplate,
-  stringifyValue,
   type EvaluateExpression,
   type HttpMethod,
+  type IntegrationCatalog,
   type Json,
   type QueryDef,
   type QueryState,
@@ -26,7 +26,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createEvaluator, type EvalRealm } from './evaluate.js';
 
-/** A request with every template resolved, ready to hand to `fetch`. */
+/**
+ * A request with every template resolved, ready to hand to `fetch` — or the reason there
+ * is none, for a query whose connection or endpoint has gone.
+ */
 export interface QueryRequest {
   id: string;
   method: HttpMethod;
@@ -34,33 +37,45 @@ export interface QueryRequest {
   headers: Record<string, string>;
   body: string | undefined;
   /**
+   * Where this query's rows are, when the endpoint it calls says so. Empty for a plain
+   * URL query, which has nowhere to record it — the binding says it instead.
+   */
+  resultPath: string;
+  /**
    * Everything the fetch depends on, as one string. The auto-run effect compares this
    * against what it last sent, so it re-fetches when the *request* changed rather than
    * whenever React happened to render.
    */
   key: string;
+  /** Set when the request could not be built at all; `run` reports it without fetching. */
+  error?: string;
 }
 
 const CYCLE_MESSAGE = 'This query depends on its own result, so it is not run automatically.';
 
-/** A template that has to end up as a string — a URL, a header, a body. */
-function asText(source: string, evaluate: EvaluateExpression): string {
-  return stringifyValue(evaluateTemplate(source, evaluate));
-}
+export function buildRequest(
+  query: QueryDef,
+  catalog: IntegrationCatalog,
+  evaluate: EvaluateExpression,
+): QueryRequest {
+  const built = buildQueryRequest(query.source, catalog, evaluate);
 
-export function buildRequest(query: QueryDef, evaluate: EvaluateExpression): QueryRequest {
-  const headers: Record<string, string> = {};
-  for (const [name, value] of Object.entries(query.headers ?? {})) {
-    headers[name] = asText(value, evaluate);
+  if (!built.ok) {
+    // Keyed on the message so a query that becomes buildable again — the catalogue
+    // finished loading — looks like a changed request and is retried.
+    return {
+      id: query.id,
+      method: 'GET',
+      url: '',
+      headers: {},
+      body: undefined,
+      resultPath: '',
+      error: built.error,
+      key: `error:${built.error}`,
+    };
   }
 
-  const request = {
-    id: query.id,
-    method: query.method,
-    url: asText(query.url, evaluate),
-    headers,
-    body: query.body === undefined ? undefined : asText(query.body, evaluate),
-  };
+  const request = { id: query.id, ...built.request, resultPath: built.resultPath };
 
   return { ...request, key: JSON.stringify(request) };
 }
@@ -117,10 +132,19 @@ export interface PageQueries {
   run: (id: string) => Promise<void>;
 }
 
+const NO_INTEGRATIONS: IntegrationCatalog = Object.freeze({});
+
 export function usePageQueries(
   queries: readonly QueryDef[],
   makeScope: (states: Record<string, QueryState>) => RenderScope,
   realm?: EvalRealm | null,
+  /**
+   * The workspace connections this page may call, supplied by the host — never read from
+   * the document, which carries no credentials. Defaults to empty, which is the correct
+   * state while it is still loading: integration queries report that they cannot run yet
+   * and are retried when it arrives, because the catalogue is part of the request key.
+   */
+  catalog: IntegrationCatalog = NO_INTEGRATIONS,
 ): PageQueries {
   const [results, setResults] = useState<Readonly<Record<string, QueryState>>>(NO_RESULTS);
 
@@ -130,8 +154,8 @@ export function usePageQueries(
 
   const evaluate = useMemo(() => createEvaluator(scope, { realm }), [scope, realm]);
   const requests = useMemo(
-    () => queries.map((query) => buildRequest(query, evaluate)),
-    [queries, evaluate],
+    () => queries.map((query) => buildRequest(query, catalog, evaluate)),
+    [queries, catalog, evaluate],
   );
 
   /** The controller of each query's in-flight request, so a re-run supersedes it. */
@@ -146,6 +170,17 @@ export function usePageQueries(
 
       sent.current.set(id, request.key);
       inflight.current.get(id)?.abort();
+
+      // No request to make: the connection or endpoint this query names is gone. Reported
+      // as the query's own error, which is what the node reading it already knows how to
+      // show — rather than a fetch of `''` that fails with something unrelated.
+      if (request.error !== undefined) {
+        setResults((current) => ({
+          ...current,
+          [id]: { loading: false, data: undefined, error: request.error },
+        }));
+        return;
+      }
 
       const controller = new AbortController();
       inflight.current.set(id, controller);

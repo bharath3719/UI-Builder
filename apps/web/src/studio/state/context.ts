@@ -169,6 +169,14 @@ export interface StudioState {
    * thing an upload has to be filed under is the project the editor was opened on.
    */
   projectId: string;
+  /**
+   * The workspace that project belongs to.
+   *
+   * Carried for the same reason as `projectId`, and used for the same kind of thing: the
+   * Data panel's queries bind to API connections, which are a workspace resource and have
+   * no other route into the studio.
+   */
+  workspaceId: string;
   /** The whole document. `page` is the one being edited; both are the same object graph. */
   doc: ProjectDoc;
   /**

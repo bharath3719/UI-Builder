@@ -1,18 +1,44 @@
-import { DEFAULT_THEME, type Json, type QueryDef, type QueryState } from '@ui-builder/schema';
+import {
+  DEFAULT_THEME,
+  type EvaluateExpression,
+  type IntegrationCatalog,
+  type Json,
+  type QueryDef,
+  type QueryState,
+  type UrlQuerySource,
+} from '@ui-builder/schema';
 import { describe, expect, it } from 'vitest';
 import { createEvaluator } from './evaluate.js';
-import { buildRequest, cyclicQueries } from './queries.js';
+import { buildRequest as build, cyclicQueries } from './queries.js';
 
 function evaluatorFor(state: Record<string, Json> = {}, queries: Record<string, QueryState> = {}) {
   return createEvaluator({ state, queries, props: {}, theme: DEFAULT_THEME });
 }
 
-function query(init: Partial<QueryDef> & Pick<QueryDef, 'id' | 'name'>): QueryDef {
+/**
+ * Most cases here are plain URL queries, whose request needs no catalogue at all — so the
+ * evaluator stays the second argument and the catalogue is opt-in. The integration cases
+ * below pass one explicitly.
+ */
+function buildRequest(
+  query: QueryDef,
+  evaluate: EvaluateExpression,
+  catalog: IntegrationCatalog = {},
+) {
+  return build(query, catalog, evaluate);
+}
+
+/** Takes the URL source's own fields inline, which is what nearly every case varies. */
+function query(
+  init: Partial<UrlQuerySource> & Pick<QueryDef, 'id' | 'name'> & { runOnLoad?: boolean },
+): QueryDef {
+  const { id, name, runOnLoad = false, ...source } = init;
+
   return {
-    method: 'GET',
-    url: '/api/thing',
-    runOnLoad: false,
-    ...init,
+    id,
+    name,
+    runOnLoad,
+    source: { kind: 'url', method: 'GET', url: '/api/thing', ...source },
   };
 }
 
@@ -90,17 +116,124 @@ describe('buildRequest', () => {
   });
 
   it('keys on the method, the headers and the body too, not just the url', () => {
-    const base = query({ id: 'q1', name: 'save', method: 'POST', body: '{}' });
+    const base = { id: 'q1', name: 'save', method: 'POST', body: '{}' } as const;
+    const key = (over: Partial<UrlQuerySource> = {}) =>
+      buildRequest(query({ ...base, ...over }), evaluatorFor()).key;
 
-    expect(buildRequest(base, evaluatorFor()).key).not.toBe(
-      buildRequest({ ...base, body: '{"a":1}' }, evaluatorFor()).key,
+    expect(key()).not.toBe(key({ body: '{"a":1}' }));
+    expect(key()).not.toBe(key({ method: 'PUT' }));
+    expect(key()).not.toBe(key({ headers: { A: 'b' } }));
+  });
+});
+
+describe('buildRequest against a workspace integration', () => {
+  const catalog: IntegrationCatalog = {
+    int1: {
+      connection: {
+        baseUrl: 'https://api.acme.io/v1',
+        auth: { type: 'bearer' },
+        defaultHeaders: { Accept: 'application/json' },
+        contentType: 'application/json',
+      },
+      endpoints: {
+        ep1: {
+          method: 'GET',
+          path: '/users/{{ userId }}',
+          headers: {},
+          body: null,
+          resultPath: 'data.items',
+        },
+      },
+      secret: 'sk-live-123',
+    },
+  };
+
+  function bound(variables: Record<string, string> = {}): QueryDef {
+    return {
+      id: 'q1',
+      name: 'users',
+      runOnLoad: false,
+      source: { kind: 'integration', integrationId: 'int1', endpointId: 'ep1', variables },
+    };
+  }
+
+  it('joins the connection base URL to the endpoint path', () => {
+    const request = buildRequest(bound(), evaluatorFor(), catalog);
+
+    expect(request.url).toBe('https://api.acme.io/v1/users/');
+    expect(request.headers.Accept).toBe('application/json');
+  });
+
+  /**
+   * The two-stage evaluation. A page's `variables` are templates in *page* scope; the
+   * endpoint's own templates then read the values those produced. Getting this wrong in
+   * either direction is how "it worked when I tested it" would become a real bug report.
+   */
+  it('evaluates page variables in page scope, then the endpoint against them', () => {
+    const request = buildRequest(
+      bound({ userId: '{{ state.id }}' }),
+      evaluatorFor({ id: 42 }),
+      catalog,
     );
-    expect(buildRequest(base, evaluatorFor()).key).not.toBe(
-      buildRequest({ ...base, method: 'PUT' }, evaluatorFor()).key,
+
+    expect(request.url).toBe('https://api.acme.io/v1/users/42');
+  });
+
+  it('attaches the connection credential, which the document never carries', () => {
+    const request = buildRequest(bound(), evaluatorFor(), catalog);
+
+    expect(request.headers.Authorization).toBe('Bearer sk-live-123');
+  });
+
+  it("carries the endpoint's result path, so a binding need not restate it", () => {
+    expect(buildRequest(bound(), evaluatorFor(), catalog).resultPath).toBe('data.items');
+  });
+
+  it('re-keys when a page variable changes, so the query re-runs', () => {
+    const first = buildRequest(
+      bound({ userId: '{{ state.id }}' }),
+      evaluatorFor({ id: 1 }),
+      catalog,
     );
-    expect(buildRequest(base, evaluatorFor()).key).not.toBe(
-      buildRequest({ ...base, headers: { A: 'b' } }, evaluatorFor()).key,
+    const second = buildRequest(
+      bound({ userId: '{{ state.id }}' }),
+      evaluatorFor({ id: 2 }),
+      catalog,
     );
+
+    expect(first.key).not.toBe(second.key);
+  });
+
+  it('reports a missing connection rather than fetching nothing', () => {
+    const request = buildRequest(bound(), evaluatorFor(), {});
+
+    expect(request.error).toMatch(/no longer available/);
+    expect(request.url).toBe('');
+  });
+
+  it('reports a deleted endpoint', () => {
+    const emptied: IntegrationCatalog = { int1: { ...catalog.int1!, endpoints: {} } };
+    const request = buildRequest(bound(), evaluatorFor(), emptied);
+
+    expect(request.error).toMatch(/has been deleted/);
+  });
+
+  /**
+   * An empty catalogue is the ordinary "still loading" state, so the key has to change
+   * once it arrives — otherwise the auto-run effect would consider the query already sent.
+   */
+  it('changes its key once the catalogue loads', () => {
+    const before = buildRequest(bound(), evaluatorFor(), {});
+    const after = buildRequest(bound(), evaluatorFor(), catalog);
+
+    expect(before.key).not.toBe(after.key);
+  });
+
+  it('sends no credential when the viewer may not read one', () => {
+    const anonymous: IntegrationCatalog = { int1: { ...catalog.int1!, secret: null } };
+    const request = buildRequest(bound(), evaluatorFor(), anonymous);
+
+    expect(request.headers.Authorization).toBeUndefined();
   });
 });
 

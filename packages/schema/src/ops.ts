@@ -677,11 +677,10 @@ export function createQuery(
       page.queries.map((query) => query.name),
       init.name ?? 'query',
     ),
-    method: init.method ?? 'GET',
-    url: init.url ?? '',
-    ...(init.headers === undefined ? {} : { headers: init.headers }),
-    ...(init.body === undefined ? {} : { body: init.body }),
     runOnLoad: init.runOnLoad ?? true,
+    // A plain URL query is what "new query" means: an integration one cannot be created
+    // without first choosing a connection, which is a decision the panel makes, not this.
+    source: init.source ?? { kind: 'url', method: 'GET', url: '' },
   };
 }
 

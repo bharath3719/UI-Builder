@@ -294,18 +294,24 @@ export function interactiveDoc(): ProjectDoc {
     {
       id: 'q-people',
       name: 'people',
-      method: 'GET',
-      url: 'https://example.com/api/people?q={{ state.search }}',
-      headers: { Accept: 'application/json' },
       runOnLoad: true,
+      source: {
+        kind: 'url',
+        method: 'GET',
+        url: 'https://example.com/api/people?q={{ state.search }}',
+        headers: { Accept: 'application/json' },
+      },
     },
     {
       id: 'q-save',
       name: 'save',
-      method: 'POST',
-      url: 'https://example.com/api/visits',
-      body: '{"seen": {{ state.count }}}',
       runOnLoad: false,
+      source: {
+        kind: 'url',
+        method: 'POST',
+        url: 'https://example.com/api/visits',
+        body: '{"seen": {{ state.count }}}',
+      },
     },
   ];
 
@@ -626,9 +632,8 @@ export function symbolDoc(): ProjectDoc {
         {
           id: 'q1',
           name: 'products',
-          method: 'GET',
-          url: 'https://example.test/products',
           runOnLoad: true,
+          source: { kind: 'url', method: 'GET', url: 'https://example.test/products' },
         },
       ],
     },
