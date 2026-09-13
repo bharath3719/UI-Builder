@@ -316,20 +316,31 @@ describe('conditional subtrees', () => {
     expect(tsx).not.toContain('ub-table-grip');
   });
 
-  test('a table with no rows takes the plain body whatever the reorder switch says', () => {
-    // There is nothing to reorder, and the line standing in for the rows is not a row
-    // anyone should be able to pick up.
-    const { tsx, modules } = onePage('Table', {
+  test('an empty reorderable table still says it has nothing in it', () => {
+    /*
+     * This used to assert the opposite — that an empty table took the plain `<tbody>`
+     * whatever the reorder switch said, on the grounds that the line standing in for the
+     * rows is not a row anyone should be able to pick up.
+     *
+     * The rule went away with the `rows: set` half of `REORDERS`. Two things paid for it:
+     * `SortableRows` picks up only rows carrying `data-grip`, so the stand-in row was
+     * never draggable anyway; and once `rows` can be bound to a query, "is it set" is not
+     * answerable while generating, which made the condition a run-time check and emitted
+     * the entire body twice in every export of a table fed by an API.
+     *
+     * What is left is a table that ships the reorder component while it happens to be
+     * empty. It is dead weight for exactly as long as the table has no rows.
+     */
+    const { tsx } = onePage('Table', {
       columns: 'Name | Role | Status',
       rows: '',
       reorderable: true,
       emptyText: 'No rows yet.',
     });
 
-    expect(modules).toEqual([]);
-    expect(tsx).not.toContain('SortableRows');
     // Four, not three: the column of handles is still one of the table's columns.
     expect(tsx).toContain('<td className="ub-table-empty" colSpan={4}>No rows yet.</td>');
+    expect(tsx).not.toContain('data-grip');
   });
 
   test('an empty table with nothing to say about it emits no stand-in row', () => {

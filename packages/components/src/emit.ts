@@ -220,7 +220,7 @@ export type EmitChild =
    * body. `grip` names the boolean prop that decides whether a leading, empty heading
    * sits above the column of drag handles.
    */
-  | { tableHead: { columns: string; rows: string; grip?: string } }
+  | { tableHead: { columns: string; rows: string; fields?: string; grip?: string } }
   /**
    * The body `<tr>`s, and — when there are none — the single row that says so.
    *
@@ -232,6 +232,15 @@ export type EmitChild =
       tableRows: {
         columns: string;
         rows: string;
+        /**
+         * The prop naming which key of each row fills each column.
+         *
+         * Only consulted when `rows` is *bound* to an array — a table typed out as text
+         * says what is in each column by position. It is what lets this transform have a
+         * second form at all: with the fields known statically, the generator can write a
+         * `.map()` over the bound array instead of refusing (see `staticOnly`).
+         */
+        fields?: string;
         grip?: string;
         /** The string prop shown, spanning every column, when there are no rows. */
         empty?: string;

@@ -325,7 +325,17 @@ export function interactiveDoc(): ProjectDoc {
         id: 'root',
         type: 'VStack',
         name: 'Page',
-        children: ['heading', 'field', 'counter', 'ask', 'confirm', 'empty', 'people', 'away'],
+        children: [
+          'heading',
+          'field',
+          'counter',
+          'ask',
+          'confirm',
+          'empty',
+          'people',
+          'roster',
+          'away',
+        ],
         props: { gap: '4' },
         styles: { base: { default: { padding: 32, minHeight: '100%' } } },
       },
@@ -435,6 +445,27 @@ export function interactiveDoc(): ProjectDoc {
       },
       // A static condition on a static prop still resolves at generation time, so this
       // node is simply absent from the output rather than wrapped in `false &&`.
+      /*
+       * A table whose rows are a query result rather than typed text.
+       *
+       * The case §15 called "a bound source prop on a named transform". It is here rather
+       * than only in a unit test because a `.map()` emitting `cell(row, 'name')` has to
+       * *typecheck* in the generated project — the export's own `tsc` is the only thing
+       * that checks the helper's signature against the call the generator wrote, and a
+       * snapshot would happily record code that does not compile.
+       */
+      {
+        id: 'roster',
+        type: 'Table',
+        name: 'Roster',
+        props: {
+          columns: 'Name | Role',
+          fields: 'name | role',
+          reorderable: true,
+          emptyText: 'Nobody matched that search.',
+        },
+        bound: { rows: '{{ queries.people.data }}' },
+      },
       {
         id: 'away',
         type: 'Text',

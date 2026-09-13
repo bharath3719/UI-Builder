@@ -135,6 +135,25 @@ export function initial(value: string, or = ''): string {
  * whose shape nothing here knows, and expressions written in the builder read them by
  * name. A project that will not compile is worse than one whose rows are not narrowed.
  */
+/**
+ * One field of one row of a data-bound table.
+ *
+ * Distinct from text() in exactly one way, and deliberately: a field holding an array
+ * reads as "a, b" rather than as JSON, because a table cell is a cell. A field holding an
+ * object is marked rather than dumped — it means the table was bound one level too high,
+ * and "[object]" says that in the width a column actually has.
+ */
+export function cell(row: unknown, field: string): string {
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) return text(row);
+
+  const value = (row as Record<string, unknown>)[field];
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return value.map((item) => cell({ item }, 'item')).join(', ');
+  return '[object]';
+}
+
 export function list(value: unknown): any[] {
   if (Array.isArray(value)) return value as unknown[];
   if (typeof value === 'number' && Number.isFinite(value) && value >= 1) {

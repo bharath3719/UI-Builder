@@ -2,11 +2,12 @@
 
 exports[`the interactive project > is this page 1`] = `
 "import { useState, type ChangeEvent } from 'react';
-import { list, pick, text, truthy } from '../lib/values';
+import { cell, list, pick, text, truthy } from '../lib/values';
 import { useQuery } from '../lib/query';
 import { useGoTo } from '../lib/navigate';
 import { Toasts, useToasts } from '../lib/toast';
 import { Overlay } from '../components/Overlay';
+import { SortableRows } from '../components/SortableRows';
 
 import styles from './Home.module.css';
 
@@ -147,6 +148,36 @@ export function Home() {
             </div>
           );
         })}
+        <table className="ub-table">
+          <thead className="ub-table-head">
+            <tr className="ub-table-row">
+              <th className="ub-table-grip-cell" scope="col" />
+              <th className="ub-table-header" scope="col">Name</th>
+              <th className="ub-table-header" scope="col">Role</th>
+            </tr>
+          </thead>
+          <SortableRows>
+            {list(queries.people.data).length === 0 && (
+              <tr className="ub-table-row">
+                <td className="ub-table-empty" colSpan={3}>Nobody matched that search.</td>
+              </tr>
+            )}
+            {list(queries.people.data).map((row, index) => (
+              <tr key={index} className="ub-table-row">
+                <td className="ub-table-grip-cell">
+                  <button
+                    type="button"
+                    className="ub-table-grip"
+                    data-grip=""
+                    aria-label="Reorder row"
+                  />
+                </td>
+                <td className="ub-table-cell">{cell(row, 'name')}</td>
+                <td className="ub-table-cell">{cell(row, 'role')}</td>
+              </tr>
+            ))}
+          </SortableRows>
+        </table>
       </div>
       <Toasts toasts={toasts} />
     </>

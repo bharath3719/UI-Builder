@@ -142,3 +142,124 @@ export function initialsOf(value: string): string {
     .map((word) => [...word][0]!.toUpperCase())
     .join('');
 }
+
+/**
+ * The same table, built from a bound array instead of typed text.
+ *
+ * This is what makes a `Table` a data component rather than a picture of one: `rows` is
+ * bindable like every other prop, so `{{ queries.people.data.items }}` puts a real API
+ * response in it — and `fields` says which key of each row belongs in which column.
+ *
+ * ## Why `fields` is separate from `columns`
+ *
+ * Because headings and field names are different things that happen to line up. "Full
+ * name" is a heading; `name` is a key. Folding them into one `Name:name` syntax would make
+ * a heading containing a colon unsayable, and would put a parsing rule between someone and
+ * a column title. Two aligned lists cost one extra field and no rules.
+ *
+ * When `fields` is empty the row's own keys are used, in first-seen order, which is the
+ * useful default for "just show me what came back".
+ *
+ * ## Values, not JSON
+ *
+ * A cell renders `stringifyCell`, not `JSON.stringify`: a field holding an object or an
+ * array is a field someone has bound one level too high, and `[object Object]` in a cell
+ * says that more clearly than a wall of braces that happens to fit.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** How a single field value reads in a cell. */
+export function stringifyCell(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return value.map(stringifyCell).join(', ');
+  return '[object]';
+}
+
+/** `name | role` — the field list, split the same way a header line is. */
+export function parseFields(fields: string): string[] {
+  return fields
+    .split('|')
+    .map((field) => field.trim())
+    .filter((field) => field !== '');
+}
+
+/**
+ * The keys to read from each row: the ones named, or every key the rows actually have.
+ *
+ * Exported because codegen needs the identical answer — an export whose columns came out
+ * in a different order from the canvas would be D6 broken for tables.
+ */
+export function tableFields(fields: string, rows: readonly unknown[]): string[] {
+  const named = parseFields(fields);
+  if (named.length > 0) return named;
+
+  const seen = new Set<string>();
+  const keys: string[] = [];
+  for (const row of rows) {
+    if (!isRecord(row)) continue;
+    for (const key of Object.keys(row)) {
+      if (!seen.has(key)) {
+        seen.add(key);
+        keys.push(key);
+      }
+    }
+  }
+  return keys;
+}
+
+/**
+ * Builds the table from an array.
+ *
+ * A row that is not an object becomes a single cell holding it, so an array of strings —
+ * a perfectly reasonable thing to bind — renders as a one-column table rather than as
+ * nothing at all.
+ */
+export function tableFromData(
+  columns: string,
+  fields: string,
+  data: readonly unknown[],
+): TableData {
+  const keys = tableFields(fields, data);
+
+  const headers = columns
+    .split('\n')[0]
+    ?.split('|')
+    .map((heading) => heading.trim())
+    .filter(
+      (heading, index, all) => !(heading === '' && (index === 0 || index === all.length - 1)),
+    );
+
+  const body = data.map((row) =>
+    isRecord(row) ? keys.map((key) => stringifyCell(row[key])) : [stringifyCell(row)],
+  );
+
+  const width = Math.max(headers?.length ?? 0, keys.length, ...body.map((row) => row.length), 0);
+  const pad = (row: string[]): string[] =>
+    row.length === width ? row : [...row, ...Array<string>(width - row.length).fill('')];
+
+  // Headings fall back to the field names, so binding a table to a response and choosing
+  // nothing else still produces a table someone can read.
+  const heading = headers && headers.length > 0 ? headers : keys;
+
+  return {
+    headers: heading.length === 0 ? [] : pad(heading),
+    rows: body.map(pad),
+    width,
+  };
+}
+
+/**
+ * The one entry point the renderer and the generator both use.
+ *
+ * `rows` is `unknown` because it is a bound prop: an array when someone bound a query to
+ * it, a string when they typed one. Deciding which *here* rather than at each call site is
+ * what keeps the canvas and the export agreeing about a table whose source changed shape.
+ */
+export function buildTable(columns: string, fields: string, rows: unknown): TableData {
+  if (Array.isArray(rows)) return tableFromData(columns, fields, rows);
+  return parseTable(columns, typeof rows === 'string' ? rows : '');
+}

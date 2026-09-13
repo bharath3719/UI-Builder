@@ -532,8 +532,11 @@ describe('the interactive project', () => {
     expect(files.map((file) => file.path)).toContain('src/lib/query.ts');
     expect(files.map((file) => file.path)).toContain('src/lib/toast.tsx');
     expect(files.map((file) => file.path)).toContain('src/lib/navigate.ts');
-    // Nothing on it drags a table row.
-    expect(files.map((file) => file.path)).not.toContain('src/components/SortableRows.tsx');
+    // The roster's rows reorder, so the component that drags them ships with it. It is
+    // asserted rather than assumed because the rule these files follow is "only what a
+    // page actually reached for" — a project that shipped it for a table with no grips
+    // would be quietly carrying dead code.
+    expect(files.map((file) => file.path)).toContain('src/components/SortableRows.tsx');
   });
 
   test('exports without a warning', () => {

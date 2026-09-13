@@ -30,6 +30,7 @@ import {
   parseDisclosures,
   parseOptions,
   parseRichText,
+  parseFields,
   parseTable,
   selectedOption,
   type EmitAttr,
@@ -45,11 +46,13 @@ import {
 import { readProp, type Node } from '@ui-builder/schema';
 import { element, stringLiteral, type JsxAttr, type JsxNode } from './ir.js';
 import {
+  cellCode,
   classListCode,
   emitProp,
   enumCode,
   initialCode,
   initialsCode,
+  listCode,
   numberCode,
   textCode,
   truthyCode,
@@ -111,7 +114,46 @@ const SCOPE_COLUMN: JsxAttr = { name: 'scope', kind: 'string', value: 'col' };
 interface TableFields {
   columns: string;
   rows: string;
+  fields?: string;
   grip?: string;
+}
+
+/**
+ * A table whose `rows` prop is bound to an expression, and the fields it will read.
+ *
+ * This is the second form §15 predicted these transforms would need. A named transform
+ * normally refuses a bound source (`staticOnly`) because the *shape* of what it emits
+ * depends on the text — but a table is the case where that stops being true the moment the
+ * columns are declared separately. With `fields` known at generation time, the shape is
+ * known too: one `<td>` per field, one `<tr>` per item, and the items are whatever the
+ * expression evaluates to at run time.
+ *
+ * Null when `rows` is not bound, so the static path below is unchanged — which is what
+ * keeps the snapshot of every existing document byte-for-byte identical.
+ */
+function boundTable(
+  spec: TableFields,
+  node: Node,
+  helpers: Helpers,
+): { code: string; fields: string[] } | null {
+  const prop = node.props[spec.rows];
+  if (prop?.kind !== 'expr') return null;
+
+  const fields =
+    spec.fields === undefined ? [] : parseFields(asString(readProp(node, spec.fields)));
+  // Without a field list there is no way to know what the columns are, so this falls
+  // through to `staticOnly`'s warning rather than guessing at the shape of the data.
+  if (fields.length === 0) return null;
+
+  const value = emitProp(prop, helpers);
+  return { code: value.kind === 'code' ? value.code : String(value.value ?? ''), fields };
+}
+
+/** The headings a bound table shows: the ones declared, else the field names. */
+function boundHeadings(spec: TableFields, node: Node, fields: string[]): string[] {
+  // Only the first line is a header, matching `parseTable`'s rule for the static form.
+  const declared = parseFields(asString(readProp(node, spec.columns)).split('\n')[0] ?? '');
+  return declared.length > 0 ? declared : fields;
 }
 
 /**
@@ -603,14 +645,19 @@ function expandChild(child: EmitChild, context: ExpandContext): JsxNode[] {
   if ('tableHead' in child) {
     const { node } = context;
     const spec = child.tableHead;
-    staticOnly(context, 'the table head', [spec.columns, spec.rows, spec.grip]);
-    const data = tableFor(spec, node);
+    const bound = boundTable(spec, node, context.helpers);
+
+    // A bound table's headings are still static — they come from `columns`, or from the
+    // field names when no heading was written — so only the unbound case has to refuse.
+    if (!bound) staticOnly(context, 'the table head', [spec.columns, spec.rows, spec.grip]);
+
+    const headings = bound ? boundHeadings(spec, node, bound.fields) : tableFor(spec, node).headers;
     const cells: JsxNode[] = [];
 
     if (hasGrip(spec, node)) {
       cells.push(element('th', [classed('ub-table-grip-cell'), SCOPE_COLUMN]));
     }
-    for (const heading of data.headers) {
+    for (const heading of headings) {
       // An empty heading is an empty cell, not a `{''}` — the same rule the `text` child
       // follows, and the same DOM the component produces for it.
       cells.push(
@@ -628,9 +675,97 @@ function expandChild(child: EmitChild, context: ExpandContext): JsxNode[] {
   if ('tableRows' in child) {
     const { node } = context;
     const spec = child.tableRows;
+    const grip = hasGrip(spec, node);
+    const bound = boundTable(spec, node, context.helpers);
+
+    /*
+     * The bound form: one `<tr>` per item of the expression, rather than per typed line.
+     *
+     * The `map` node is the same one a `repeat` produces, which is the point — a table
+     * bound to a query and a stack repeated over one are the same idea, and an export that
+     * wrote them two different ways would have two things to keep right. `index` keys the
+     * rows because nothing in the data identifies them, exactly as `repeat` decides.
+     */
+    if (bound) {
+      /*
+       * The empty message, as a run-time check rather than a generation-time one.
+       *
+       * The static path decides this while generating, because it can count the lines. A
+       * bound table cannot — so it emits both, guarded. Leaving it out would be a real
+       * disagreement with the canvas, which does show the message for an empty array
+       * (`buildTable`), and D6 is the rule that the two must render the same table.
+       */
+      const emptyText = spec.empty === undefined ? '' : asString(readProp(node, spec.empty));
+      const emptyRow: JsxNode[] =
+        emptyText === ''
+          ? []
+          : [
+              {
+                kind: 'when',
+                test: `${listCode(bound.code, context.helpers)}.length === 0`,
+                child: element(
+                  'tr',
+                  [classed('ub-table-row')],
+                  [
+                    element(
+                      'td',
+                      [
+                        classed('ub-table-empty'),
+                        {
+                          name: 'colSpan',
+                          kind: 'expr',
+                          code: String(Math.max(1, bound.fields.length + (grip ? 1 : 0))),
+                        },
+                      ],
+                      [{ kind: 'text', value: emptyText }],
+                    ),
+                  ],
+                ),
+              },
+            ];
+
+      return [
+        ...emptyRow,
+        {
+          kind: 'map',
+          over: listCode(bound.code, context.helpers),
+          params: '(row, index)',
+          statements: [],
+          child: element(
+            'tr',
+            [{ name: 'key', kind: 'expr', code: 'index' }, classed('ub-table-row')],
+            [
+              ...(grip
+                ? [
+                    element(
+                      'td',
+                      [classed('ub-table-grip-cell')],
+                      [
+                        element('button', [
+                          { name: 'type', kind: 'string', value: 'button' },
+                          classed('ub-table-grip'),
+                          { name: 'data-grip', kind: 'string', value: '' },
+                          { name: 'aria-label', kind: 'string', value: 'Reorder row' },
+                        ]),
+                      ],
+                    ),
+                  ]
+                : []),
+              ...bound.fields.map((field) =>
+                element(
+                  'td',
+                  [classed('ub-table-cell')],
+                  [{ kind: 'expr', code: cellCode('row', field, context.helpers) }],
+                ),
+              ),
+            ],
+          ),
+        },
+      ];
+    }
+
     staticOnly(context, 'the table body', [spec.columns, spec.rows, spec.grip, spec.empty]);
     const data = tableFor(spec, node);
-    const grip = hasGrip(spec, node);
 
     if (data.rows.length === 0) {
       const empty = spec.empty === undefined ? '' : asString(readProp(node, spec.empty));

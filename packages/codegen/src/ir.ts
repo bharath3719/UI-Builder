@@ -186,9 +186,15 @@ function printNode(node: JsxNode, depth: number): string[] {
   // most of a generated page, and reads far better than the exploded form.
   const only = node.children.length === 1 ? node.children[0] : undefined;
   if (fits && only && only.kind !== 'element') {
-    const inner = printNode(only, 0)[0]!;
-    const line = `${pad}${open}>${inner}</${node.tag}>`;
-    if (line.length <= PRINT_WIDTH) return [line];
+    const printed = printNode(only, 0);
+    // Only when the child really is one line. A non-element child is usually an
+    // expression or a run of text and therefore is, but a `map` and a `cond` are not —
+    // and taking `[0]` of those silently dropped everything after their first line,
+    // producing `<tbody>{list(rows).map((row, index) => (</tbody>`. It stayed latent
+    // until a table's rows became a map; the guard is the fix, not the caller.
+    const inner = printed.length === 1 ? printed[0]! : null;
+    const line = inner === null ? null : `${pad}${open}>${inner}</${node.tag}>`;
+    if (line !== null && line.length <= PRINT_WIDTH) return [line];
   }
 
   const body = node.children.flatMap((child) => printNode(child, depth + 1));
