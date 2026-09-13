@@ -1858,6 +1858,131 @@ would repeat `npm ci` and `prisma generate` to save less time than that setup co
 validates arrives from the workflow's `env:` block instead — including a CI-only
 `JWT_SECRET`, which signs tokens for a database destroyed with the runner.
 
+#### Workspace API integrations ✅ done
+
+A workspace defines connections to outside HTTP APIs and the named calls on them; a page
+query binds to one of those calls. This is the piece §10 left implicit — Phase 11 gave a
+page an HTTP request, and this makes the request a _shared_ thing a team writes once.
+
+**Two models, matching the two levels.** `ApiIntegration` is the connection — base URL,
+auth scheme, default headers, content type. `ApiEndpoint` is one call on it — method, path,
+headers, body, and `resultPath`, the dotted path to where the rows live in a response.
+Endpoints are embedded in their integration's summary, because every screen that lists
+connections wants their calls too, and a workspace has tens of these rather than thousands.
+
+**D14: the browser makes the call, not the server.** The alternative was a proxy route that
+kept the token server-side and solved CORS at the same time. It was refused deliberately;
+the consequence is that whoever can open the studio can read the workspace's tokens, and
+every third-party API has to send CORS headers of its own. What the design still guarantees
+is narrower than a proxy and worth stating:
+
+- The token is encrypted at rest (AES-256-GCM, `apps/api/src/lib/secrets.ts`), so a database
+  dump is not a list of live credentials.
+- It is served by its own route, behind its own role, and never appears in an integration's
+  summary — so listing connections, which happens constantly, never puts one on the wire.
+- It never enters a `ProjectDoc`. Revisions, publishes and exported zips therefore cannot
+  carry one, and rotating a token does not mean editing documents.
+- A _published_ page gets no credentials at all. A shared link is public, so building the
+  catalogue there would hand the workspace's tokens to whoever opens it. Such a page runs
+  its plain-URL queries and reports that its integration queries have no connection.
+
+Reversing D14 later is a route and a catalogue source, not a document migration — which is
+the property that made it safe to take the cheaper path first.
+
+**One request builder, three callers.** `buildIntegrationRequest` lives in `schema` because
+the API's test-run route, the browser at run time and the code generator must not disagree
+about what a request is. It is D6's argument applied to requests instead of CSS, and it
+takes its evaluator as an argument, so `schema` still cannot evaluate anything (§13).
+
+**`QueryDef` grew a discriminated `source`** — either the request written out on the query,
+as before, or `{ integrationId, endpointId, variables }`. Document schema 3 → 4. A union
+rather than an optional `endpointId` beside the flat fields, because the flat version would
+leave a `url` and a `method` on every integration query, meaning nothing and read by
+nobody. `querySourceTemplates` is then the single place that knows which of a source's
+fields are templates, so the expression collector, the cycle detector and the rename
+warnings cannot drift apart.
+
+A page supplies `variables`, whose values are templates in _page_ scope. So there are two
+template layers, and the run time resolves them in turn — page scope first, then the
+endpoint against those values. **Codegen collapses them instead**, because an export has no
+catalogue to consult: `/users/{{ userId }}` with `{ userId: '{{ state.id }}' }` is emitted
+as `/users/${text(state.id)}`. The generated project contains no integration machinery at
+all, only an ordinary request, and the token becomes
+`import.meta.env.VITE_<SLUG>_TOKEN` with a generated `.env.example`. Named after the slug
+rather than the display name, so renaming a connection does not rename a variable a
+deployment already sets.
+
+**A server-side test run** is the one place the API fetches a URL a user typed, and it
+exists for one reason: the studio cannot offer "bind this column to `item.email`" without
+having seen a real response, and asking the _browser_ for one runs into the CORS wall the
+browser call path lives with. It carries a real SSRF guard — http/https only, no redirects,
+capped in time and bytes, and refused against loopback, RFC 1918, link-local and the cloud
+metadata address unless the deployment opts in. The residual DNS-rebinding window is
+recorded in `outbound.ts` rather than left unsaid.
+
+##### Binding a control to the result
+
+The gap this phase existed to close, and the one §15 had named: "a bound source prop on a
+named transform". A named transform refuses a bound source because the _shape_ of what it
+emits depends on the text — but a table is where that stops being true, once the columns
+are declared apart from the data.
+
+`Table.rows` and `Select.options` now take an array as well as a string. A table adds
+`fields` (which key fills which column, kept separate from `columns` because a heading and
+a field name are different things that happen to line up); a select adds
+`valueField`/`labelField`, which fall back to the conventional keys. `buildTable` and
+`buildOptions` decide which kind they were given, and the canvas, the preview and the
+export all call them — so the three cannot render different rows.
+
+Codegen emits the second form: `{list(expr).map((row, index) => …<td>{cell(row, 'name')}</td>…)}`,
+the same `map` node a `repeat` produces. The two differ in one way worth knowing: a table
+must have its fields declared before the generator can write anything, because the columns
+_are_ the shape, so it still warns and omits when they are not. A dropdown's shape is one
+`<option>` per item however many keys it has, so its fallback lives at run time and it never
+has to refuse.
+
+Three things fell out of doing it. The JSX printer assumed a lone non-element child printed
+on one line and kept only its first — latent until a `map` became one, then it emitted
+`<tbody>{list(rows).map((row, index) => (</tbody>`. `Table`'s `REORDERS` required `rows` to
+be _set_, which is unanswerable for a bound prop, so both bodies were emitted in every
+export of a reorderable table fed by an API; the clause is gone, because `SortableRows`
+picks up only rows carrying `data-grip` and the empty row has none. And dropping it made the
+reorderable branch the one an empty table takes, which lost the empty message — that branch
+had never needed to say it was empty, and does now.
+
+##### Verified
+
+Typecheck, lint, 1015 tests (129 new) and the production build. The API suite covers the
+routes, the roles, the containment checks and the encryption; `outbound.test.ts` pins every
+address range the SSRF guard exists for.
+
+Two browser passes, both hand-run. The studio, 7/7: a connection and an endpoint defined in
+settings and sampled, then a project whose new query defaults to calling that endpoint, the
+canvas fetching it with the stored token, and a Text bound to the result rendering real data
+on the artboard. The built export, 8/8: `npm install && npm run build` inside the emitted
+project, then the bundle against a mocked API — the table's headings, one row per item, each
+cell from the field its column names, the grips, the dropdown filled from the same response,
+and an empty response showing the message the canvas shows.
+
+One note for whoever reads a request log next. A cross-origin request carrying
+`Authorization` is non-simple, so the browser sends a CORS preflight first; an `OPTIONS`
+line with no credential on it is that, not a page firing before its token arrived. A check
+asserting otherwise cost an hour.
+
+##### What is left
+
+- **The other named transforms.** `radios`, `navItems` and `tabs` are the same shape as
+  `options` and would take the same treatment; `markdown` is the one to leave alone, for the
+  reason `staticOnly` gives.
+- **A `DatePicker` bound to a range.** Its _value_ already binds like any prop, which is
+  most of what was wanted; min/max from a query would be an ordinary bindable prop rather
+  than a transform.
+- **Rotating a token** invalidates nothing in a running studio: `useIntegrationCatalog`
+  re-fetches on a connection-list change, and `hasSecret` does not change on a rotation, so
+  a session holds the old value until it reloads.
+- **Pagination.** `resultPath` finds the rows; nothing yet carries a cursor back into the
+  next request. It wants a `runQuery` step that can pass arguments.
+
 ---
 
 ## 13. Risk register
@@ -1942,15 +2067,19 @@ Three smaller things are unblocked and worth taking whenever they suit:
   edit. What is left is `Icon`, which needs a decision rather than typing (the `icon`
   PropSpec type waits on settling the icon set, a bundle-size call), `Form`, which wants an
   `onSubmit` action to carry, and `List`, which is a `repeat` wearing a component's name.
-- **A bound source prop on a named transform**, which Phase 11's codegen deliberately left
-  as a warning rather than an export (see its notes). `options`, `radios` and `navItems`
-  are the tractable three: `parseOptions` is fifteen lines of pure data handling, so
-  shipping it into `src/lib/` and emitting `parseOptions(text(…)).map(…)` around the markup
-  the template already describes would keep D6 — provided the markup is still written once,
-  which means the transform branches in `expand.ts` growing a second form rather than a
-  second copy. `tableHead`/`tableRows` are the same shape and more of it. `markdown` is the
-  one to leave alone: it means shipping the parser §7 says an export never carries, and
-  "render Markdown that arrived from a query" is a different feature wearing the same prop.
+- ~~**A bound source prop on a named transform.**~~ Done for `options` and
+  `tableHead`/`tableRows` — see "Workspace API integrations" above. It went as predicted:
+  the transform branches in `expand.ts` grew a second form rather than a second copy, and
+  the markup is still written once. One correction to the prediction, though. The suggested
+  shape was `parseOptions(text(…)).map(…)` — shipping the _parser_ and handing it a
+  stringified binding. That is not what a bound source is: it is already an array, and
+  stringifying it to re-split it would be a round trip through text that loses every field
+  but one. What ships instead is a _mapper_ — `options(expr, 'value', 'label')` and
+  `cell(row, field)` — and the string parser stays behind on the static path where it
+  belongs. `radios`, `navItems` and `tabs` are the same shape again and still open.
+  `markdown` is the one to leave alone: it means shipping the parser §7 says an export never
+  carries, and "render Markdown that arrived from a query" is a different feature wearing
+  the same prop.
 - ~~**Multi-select.**~~ Done — see its section above Phase 11. Phase 4 is closed.
 - ~~**Splitting the component specs from their React implementations.**~~ Done — see the
   section above Phase 11. The API's tsconfig is a plain Node one again and its bundle is
