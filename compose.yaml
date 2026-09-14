@@ -67,6 +67,11 @@ services:
       WEB_ORIGIN: ${WEB_ORIGIN}
       JWT_SECRET: ${JWT_SECRET}
       INTEGRATION_KEY: ${INTEGRATION_KEY:-}
+      # Stated rather than inferred. NODE_ENV=production above already defaults this to
+      # false, so this line changes nothing today — it is here so that the guard standing
+      # between an integration URL and the instance's metadata service does not depend on
+      # a second variable being right.
+      INTEGRATION_ALLOW_PRIVATE_NETWORK: ${INTEGRATION_ALLOW_PRIVATE_NETWORK:-false}
       # Object storage is deliberately unset: the asset routes answer 503 and the studio
       # hides the upload button. Fill in the S3_* block in .env to turn uploads on.
       S3_BUCKET: ${S3_BUCKET:-}

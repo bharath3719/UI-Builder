@@ -27,7 +27,7 @@
 
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { env } from '../env.js';
+import { allowsPrivateNetwork } from '../env.js';
 
 /** 30 seconds. Long enough for a slow report endpoint, short enough to not hold a worker. */
 const TIMEOUT_MS = 30_000;
@@ -108,13 +108,13 @@ export function isPrivateAddress(address: string): boolean {
  * laptop" is the ordinary case, and a guard that forbids it teaches people to disable the
  * guard. False in production, where the same request is how an SSRF reaches the metadata
  * service.
+ *
+ * Resolved in `env.ts` rather than here: it is the one setting that depends on NODE_ENV as
+ * well as on itself, and the server warns about it at boot, so both readings have to come
+ * from the same place.
  */
-function allowsPrivateNetwork(): boolean {
-  return env.INTEGRATION_ALLOW_PRIVATE_NETWORK;
-}
-
 async function assertPublicDestination(url: URL): Promise<void> {
-  if (allowsPrivateNetwork()) return;
+  if (allowsPrivateNetwork) return;
 
   const host = url.hostname.replace(/^\[|\]$/g, '');
 

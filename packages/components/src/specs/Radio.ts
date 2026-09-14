@@ -11,7 +11,8 @@ export const RadioSpec: ComponentSpec = {
   description: 'One choice out of several, one per line.',
 
   props: [
-    { name: 'options', label: 'Options', type: 'text', placeholder: 'One per line' },
+    // `data`, not `text`: bound to a query this is the array itself. See `Table`'s rows.
+    { name: 'options', label: 'Options', type: 'data', placeholder: 'One per line' },
     { name: 'value', label: 'Selected', type: 'string', placeholder: 'Option value' },
     { name: 'name', label: 'Field name', type: 'string', placeholder: 'choice' },
     {

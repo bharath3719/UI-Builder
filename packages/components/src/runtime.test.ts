@@ -11,9 +11,10 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import chartSource from './react/Chart.tsx?raw';
 import overlaySource from './react/Overlay.tsx?raw';
 import sortableRowsSource from './react/SortableRows.tsx?raw';
-import { OVERLAY, SORTABLE_ROWS } from './runtime.js';
+import { CHART, OVERLAY, SORTABLE_ROWS } from './runtime.js';
 
 /** Everything after the file-level comment — the part the two copies share. */
 function body(source: string): string {
@@ -26,6 +27,7 @@ function body(source: string): string {
 const MODULES = [
   { module: SORTABLE_ROWS, twin: sortableRowsSource },
   { module: OVERLAY, twin: overlaySource },
+  { module: CHART, twin: chartSource },
 ];
 
 describe('exported runtime modules', () => {

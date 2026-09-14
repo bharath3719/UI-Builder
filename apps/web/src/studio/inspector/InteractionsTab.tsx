@@ -41,6 +41,7 @@ import inspector from './Inspector.module.css';
 const STEP_LABELS: Record<ActionStep['kind'], string> = {
   setState: 'Set variable',
   toggleState: 'Toggle variable',
+  setFilter: 'Filter on value',
   runQuery: 'Run query',
   navigate: 'Navigate',
   showToast: 'Show toast',
@@ -83,6 +84,7 @@ function overlayNodes(page: Page): Node[] {
 function blankStep(kind: ActionStep['kind'], page: Page): ActionStep | null {
   switch (kind) {
     case 'setState':
+    case 'setFilter':
     case 'toggleState': {
       const variable = page.state[0];
       // Nothing to point at. The panel offers the kind anyway and says why, which is a
@@ -119,7 +121,10 @@ function blankStep(kind: ActionStep['kind'], page: Page): ActionStep | null {
 
 /** Why a step kind cannot be added yet, or null when it can. */
 function unavailable(kind: ActionStep['kind'], page: Page): string | null {
-  if ((kind === 'setState' || kind === 'toggleState') && page.state.length === 0) {
+  if (
+    (kind === 'setState' || kind === 'toggleState' || kind === 'setFilter') &&
+    page.state.length === 0
+  ) {
     return 'Add a state variable first';
   }
   if (kind === 'runQuery' && page.queries.length === 0) return 'Add a query first';
@@ -165,7 +170,7 @@ function StepEditor({ node, event, steps, index }: StepProps) {
     // Clearing a step's argument leaves the step; an empty message is still a toast, and
     // removing the step is what the bin is for.
     const fallback = staticProp('');
-    if (step.kind === 'setState' && field === 'value') {
+    if ((step.kind === 'setState' || step.kind === 'setFilter') && field === 'value') {
       replace({ ...step, value: value ?? fallback });
     } else if (step.kind === 'navigate' && field === 'to') {
       replace({ ...step, to: value ?? fallback });
@@ -175,7 +180,9 @@ function StepEditor({ node, event, steps, index }: StepProps) {
   };
 
   const variable =
-    step.kind === 'setState' ? page.state.find((v) => v.id === step.stateId) : undefined;
+    step.kind === 'setState' || step.kind === 'setFilter'
+      ? page.state.find((v) => v.id === step.stateId)
+      : undefined;
 
   return (
     <li className={styles.step}>
@@ -241,7 +248,7 @@ function StepEditor({ node, event, steps, index }: StepProps) {
       </div>
 
       <div className={styles.stepBody}>
-        {step.kind === 'setState' || step.kind === 'toggleState' ? (
+        {step.kind === 'setState' || step.kind === 'toggleState' || step.kind === 'setFilter' ? (
           <div className={styles.field}>
             <label className={styles.fieldLabel} htmlFor={`${id}-var`}>
               Variable
@@ -262,24 +269,37 @@ function StepEditor({ node, event, steps, index }: StepProps) {
           </div>
         ) : null}
 
-        {step.kind === 'setState' ? (
+        {step.kind === 'setState' || step.kind === 'setFilter' ? (
           <div className={styles.field}>
             {/* The label names the field and nothing else. Wrapping the control *and*
                 its hint in one `<label>` would make the whole paragraph part of the
                 field's accessible name, which is what a screen reader reads out. */}
             <label className={styles.fieldLabel} htmlFor={id}>
-              To
+              {step.kind === 'setState' ? 'To' : 'On'}
             </label>
             <ExpressionField
               id={id}
               value={step.value}
               suggestions={suggestions}
               disabled={!writable}
-              placeholder="A value, or {{ an expression }}"
-              // A literal typed here means what the variable's own type says it means.
-              parse={(text): Json => parseStateValue(variable?.type ?? 'string', text)}
+              placeholder={
+                step.kind === 'setState'
+                  ? 'A value, or {{ an expression }}'
+                  : 'A category, or {{ event.label }}'
+              }
+              // A literal typed here means what the variable's own type says it means —
+              // except for a filter, which is a category and so is always text.
+              parse={(text): Json =>
+                step.kind === 'setFilter' ? text : parseStateValue(variable?.type ?? 'string', text)
+              }
               onCommit={(next) => commitProp('value', next)}
             />
+            {step.kind === 'setFilter' ? (
+              <p className={styles.hint}>
+                Picking what the variable already holds clears it, so a second click on the same
+                mark takes the filter off.
+              </p>
+            ) : null}
           </div>
         ) : null}
 

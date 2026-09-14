@@ -5,10 +5,14 @@
  * a type, a value and a usage line, which is more than a 28px row can hold.
  */
 
+/* The section around this one is flush, so this is the scroll container: it has to take
+   the panel's height outright — left to size itself it would grow past the panel and be
+   clipped by it, and a page with a dozen queries would have no way to reach the last. */
 .data {
   display: flex;
   flex-direction: column;
   gap: var(--sp-6);
+  height: 100%;
   padding: var(--sp-4);
   overflow-y: auto;
 }
@@ -26,13 +30,54 @@
   gap: var(--sp-3);
 }
 
+/* A bare wrapper: the heading keeps the semantics and the button inside it takes the
+   look, since the whole title is the fold target. */
 .groupTitle {
   margin: 0;
+  min-width: 0;
+  font-size: var(--fs-xs);
+}
+
+.groupToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
   color: var(--c-text-muted);
+  font-family: inherit;
   font-size: var(--fs-xs);
   font-weight: var(--fw-semibold);
   text-transform: uppercase;
   letter-spacing: var(--ls-label);
+  text-align: left;
+  cursor: pointer;
+}
+
+.groupToggle:hover {
+  color: var(--c-text);
+}
+
+.groupToggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--c-focus-ring);
+}
+
+.groupChevron {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--c-text-subtle);
+}
+
+/* How much is behind a folded group — the one thing it still has to be able to say. */
+.groupCount {
+  color: var(--c-text-subtle);
+  font-weight: var(--fw-medium);
+  letter-spacing: normal;
+  font-variant-numeric: tabular-nums;
 }
 
 .cards {
@@ -180,6 +225,38 @@
   box-shadow: 0 0 0 2px var(--c-focus-ring);
 }
 
+/* Connection and endpoint pickers. Unlike `.type` in the card head — which sits beside a
+   name and is sized by its own label — these own the full width of a field, because what
+   they hold is a connection name of no predictable length. */
+.select {
+  width: 100%;
+  min-width: 0;
+  height: var(--h-control);
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.select:hover:not(:disabled) {
+  border-color: var(--c-border-strong);
+}
+
+.select:focus-visible {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-focus-ring);
+}
+
+.select:disabled {
+  color: var(--c-text-subtle);
+  cursor: default;
+}
+
 .checkbox {
   flex: none;
   width: 14px;
@@ -265,17 +342,56 @@
   line-height: var(--lh-normal);
 }
 
-.empty code {
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
-}
-
 .usage {
   margin: 0;
   color: var(--c-text-subtle);
   font-size: var(--fs-xs);
   line-height: var(--lh-normal);
+}
+
+/*
+ * What this query will actually request.
+ *
+ * A URL is one long token with no spaces to break at — a base URL, a path, percent
+ * escapes — so it wraps mid-token rather than running off the panel and taking the
+ * layout with it. `cursor: text` because the markup opts this back into selection:
+ * copying the URL out to try it somewhere else is most of why it is shown at all.
+ */
+.requestPreview {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--c-surface-hover);
+  color: var(--c-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+
+/* The space after the method is a real one in the markup, not margin alone: this line is
+   meant to be copied, and `POSThttps://…` is not what anyone wants on their clipboard. */
+.requestMethod {
+  margin-right: var(--sp-1);
+  color: var(--c-text);
+  font-weight: var(--fw-semibold);
+}
+
+.hint {
+  margin: 0;
+  color: var(--c-text-subtle);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  cursor: text;
+}
+
+.hint code,
+.empty code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+  overflow-wrap: anywhere;
 }
 
 .problem {

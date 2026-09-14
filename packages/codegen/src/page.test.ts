@@ -456,6 +456,86 @@ describe('the page walk', () => {
   });
 });
 
+/*
+ * What a *request* mentions is part of the page, even though none of it reaches the markup.
+ *
+ * Both of these emitted a project that referenced a name it never declared, which `tsc` in
+ * the exported project catches and a snapshot does not — the bytes were stable, they just
+ * were not valid TypeScript. See `--doc powerbi` in `scripts/emit.mts`.
+ */
+describe('names a query’s own request brings into scope', () => {
+  function pageReading(url: string, extra: Partial<Parameters<typeof makePage>[0]> = {}) {
+    const node = makeNode({ id: 'x', type: 'Box', name: 'Box' });
+    return generatePage(
+      makePage({
+        id: 'p',
+        name: 'Home',
+        path: '/',
+        rootId: 'x',
+        nodes: { x: node },
+        queries: [
+          { id: 'q', name: 'only', runOnLoad: true, source: { kind: 'url', method: 'GET', url } },
+        ],
+        ...extra,
+      }),
+      DEFAULT_THEME,
+    );
+  }
+
+  test('state read only by a query’s URL is still declared', () => {
+    const { tsx } = pageReading('https://example.test/?q={{ state.term }}', {
+      state: [{ id: 'sv', name: 'term', type: 'string', initial: '' }],
+    });
+
+    expect(tsx).toContain('state.term');
+    expect(tsx).toMatch(/const \[state\] = useState/);
+  });
+
+  test('a query whose URL reads another query gets the object it reads', () => {
+    const node = makeNode({ id: 'x', type: 'Box', name: 'Box' });
+    const { tsx } = generatePage(
+      makePage({
+        id: 'p',
+        name: 'Home',
+        path: '/',
+        rootId: 'x',
+        nodes: { x: node },
+        queries: [
+          {
+            id: 'a',
+            name: 'first',
+            runOnLoad: true,
+            source: { kind: 'url', method: 'GET', url: 'https://example.test/a' },
+          },
+          {
+            id: 'b',
+            name: 'second',
+            runOnLoad: true,
+            source: {
+              kind: 'url',
+              method: 'GET',
+              url: 'https://example.test/b?id={{ queries.first.data.id }}',
+            },
+          },
+        ],
+      }),
+      DEFAULT_THEME,
+    );
+
+    expect(tsx).toContain('queries.first.data.id');
+    expect(tsx).toContain('const queries = {');
+  });
+
+  test('a page nothing reads from still declares neither', () => {
+    // The other half: the branches above must not fire on an ordinary page, or every
+    // export grows a `state` and a `queries` object that `noUnusedLocals` then rejects.
+    const { tsx } = pageReading('https://example.test/');
+
+    expect(tsx).not.toContain('useState');
+    expect(tsx).not.toContain('const queries = {');
+  });
+});
+
 describe('page names', () => {
   test('a label becomes an identifier', () => {
     expect(componentName('Home')).toBe('Home');

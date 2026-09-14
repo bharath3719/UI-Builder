@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ApiIntegrationSummary, CatalogEntry, IntegrationCatalog } from '@ui-builder/schema';
 import { readIntegrationSecret } from './integrations.js';
 import { useIntegrations } from './queries.js';
@@ -78,9 +78,60 @@ function listKey(list: readonly ApiIntegrationSummary[]): string {
 const NO_SECRETS: Secrets = Object.freeze({ for: '', values: Object.freeze({}) });
 const NO_CATALOG: IntegrationCatalog = Object.freeze({});
 
+/**
+ * How long before a token expires to go and get another one.
+ *
+ * The same sixty seconds the server mints with, for the same reason and at the other end
+ * of the same wire: a page that starts a request 59 seconds before its token dies should
+ * already be holding the next one.
+ */
+const RENEW_LEAD_MS = 60_000;
+
+/** Never sooner than this, so a clock skew cannot turn renewal into a request loop. */
+const MIN_RENEW_MS = 5_000;
+
+/**
+ * Nor later than this. `setTimeout` silently fires *immediately* for a delay over about
+ * 24.8 days, which would be the same loop wearing a disguise; and a token claiming a
+ * twelve-hour life is one worth checking on anyway.
+ */
+const MAX_RENEW_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * When to re-fetch, given every expiry just received — or null when nothing expires.
+ *
+ * The soonest one, because these are fetched together and a single renewal covers the
+ * whole set. Fetching six tokens to replace the one that was about to die is one request
+ * instead of six timers, and the five it replaces early cost nothing: minting is cached on
+ * the server, so a token that is still good comes back as the same token.
+ */
+function renewDelay(expiries: readonly (string | null)[], now: number): number | null {
+  let soonest: number | null = null;
+
+  for (const expiry of expiries) {
+    if (expiry === null) continue;
+    const at = Date.parse(expiry);
+    if (!Number.isFinite(at)) continue;
+    if (soonest === null || at < soonest) soonest = at;
+  }
+
+  if (soonest === null) return null;
+  return Math.min(MAX_RENEW_MS, Math.max(MIN_RENEW_MS, soonest - RENEW_LEAD_MS - now));
+}
+
 export function useIntegrationCatalog(workspaceId: string | undefined): IntegrationCatalog {
   const integrations = useIntegrations(workspaceId);
   const [secrets, setSecrets] = useState<Secrets>(NO_SECRETS);
+
+  /**
+   * Bumped when a credential is about to expire, which re-runs the fetch below.
+   *
+   * Deliberately *not* part of `Secrets.for`. That field answers "were these gathered for
+   * this list", and a renewal does not change the list — so gating on the round as well
+   * would empty the catalogue for the length of a round trip and every integration query
+   * on the canvas would report having no connection, once an hour, for no reason.
+   */
+  const [round, setRound] = useState(0);
 
   const list = integrations.data;
   const key = list ? listKey(list) : '';
@@ -95,33 +146,48 @@ export function useIntegrationCatalog(workspaceId: string | undefined): Integrat
     if (needed.length === 0) return;
 
     const controller = new AbortController();
+    let renewal: ReturnType<typeof setTimeout> | undefined;
 
     void (async () => {
       const entries = await Promise.all(
         needed.map(async (integration) => {
           try {
-            const result = await readIntegrationSecret(
-              workspaceId,
-              integration.id,
-              controller.signal,
-            );
-            return [integration.id, result.secret] as const;
+            return await readIntegrationSecret(workspaceId, integration.id, controller.signal);
           } catch {
-            // A 403 (this role may not read tokens), a 404 (deleted between fetches), or a
-            // dropped connection. All three mean the same thing to the page: no credential.
+            // A 403 (this role may not read tokens), a 404 (deleted between fetches), a 503
+            // (an authorization server that refused these client credentials), or a dropped
+            // connection. All of them mean the same thing to the page: no credential.
             // Recorded as a settled `null` rather than left absent, so the request still
             // goes out and the API it calls gets to say what it thinks of that.
-            return [integration.id, null] as const;
+            return { integrationId: integration.id, secret: null, expiresAt: null };
           }
         }),
       );
 
       if (controller.signal.aborted) return;
-      setSecrets({ for: key, values: Object.fromEntries(entries) });
+
+      setSecrets({
+        for: key,
+        values: Object.fromEntries(entries.map((entry) => [entry.integrationId, entry.secret])),
+      });
+
+      // Only the schemes that mint say when they stop working, so in a workspace of pasted
+      // bearer tokens this is null and nothing is scheduled — which is the truth about
+      // them, not an omission.
+      const delay = renewDelay(
+        entries.map((entry) => entry.expiresAt),
+        Date.now(),
+      );
+      if (delay !== null) {
+        renewal = setTimeout(() => setRound((current) => current + 1), delay);
+      }
     })();
 
-    return () => controller.abort();
-  }, [workspaceId, list, key]);
+    return () => {
+      controller.abort();
+      clearTimeout(renewal);
+    };
+  }, [workspaceId, list, key, round]);
 
   /*
    * No catalogue at all until the secrets in hand belong to *this* version of the list.
@@ -135,16 +201,25 @@ export function useIntegrationCatalog(workspaceId: string | undefined): Integrat
    * The cost is that integration queries report "no connection available" for the first
    * render or two, which is the honest state. Because the catalogue is part of the request
    * key, each query then fires exactly once, with its credential, as soon as it is there.
+   *
+   * Memoised on the two things it is built from, and that matters more than it looks:
+   * `usePageQueries` takes the catalogue as a `useMemo` dependency, so a fresh object each
+   * render re-derives every query's request — a `JSON.stringify` per query — on every
+   * render of the canvas, which re-renders throughout a drag. Correctness never depended on
+   * it (the auto-run effect compares the serialised key, not the object), which is exactly
+   * why it was invisible.
    */
-  if (!list || list.length === 0) return NO_CATALOG;
+  return useMemo(() => {
+    if (!list || list.length === 0) return NO_CATALOG;
 
-  // A list where nothing has a token needs no fetch, so it is ready immediately.
-  const needsSecrets = list.some((integration) => integration.hasSecret);
-  if (needsSecrets && secrets.for !== key) return NO_CATALOG;
+    // A list where nothing has a token needs no fetch, so it is ready immediately.
+    const needsSecrets = list.some((integration) => integration.hasSecret);
+    if (needsSecrets && secrets.for !== key) return NO_CATALOG;
 
-  const catalog: Record<string, CatalogEntry> = {};
-  for (const integration of list) {
-    catalog[integration.id] = connectionOf(integration, secrets.values[integration.id] ?? null);
-  }
-  return catalog;
+    const catalog: Record<string, CatalogEntry> = {};
+    for (const integration of list) {
+      catalog[integration.id] = connectionOf(integration, secrets.values[integration.id] ?? null);
+    }
+    return catalog;
+  }, [list, key, secrets]);
 }

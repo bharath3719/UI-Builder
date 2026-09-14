@@ -675,7 +675,9 @@ export function removeStateVar(page: Page, id: string): Page {
 
   const pruned = pruneSteps(
     page,
-    (step) => (step.kind === 'setState' || step.kind === 'toggleState') && step.stateId === id,
+    (step) =>
+      (step.kind === 'setState' || step.kind === 'toggleState' || step.kind === 'setFilter') &&
+      step.stateId === id,
   );
 
   return { ...pruned, state: pruned.state.filter((variable) => variable.id !== id) };

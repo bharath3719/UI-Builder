@@ -50,10 +50,51 @@ export type PropSpec =
   | {
       name: string;
       label: string;
-      type: 'string' | 'text' | 'number' | 'boolean' | 'color' | 'url';
+      /**
+       * `data` is the odd one, and it is the *absence* of a type rather than one more.
+       *
+       * Every other kind here narrows a bound value toward something the prop displays.
+       * A `data` prop is not displayed — it is a series, a set of rows, a list of choices,
+       * which the component parses (`buildTable`, `buildOptions`, `buildPoints`) and which
+       * arrives as a string when it was typed out and as an array when it was bound. So
+       * the one thing `coerceToProp` must not do to it is narrow it: JSON-encoding the
+       * array destroys exactly the information the component wanted.
+       *
+       * It is authored in the same multi-line field `text` gets, because typing one out is
+       * typing lines. The difference is what happens to a binding, which is why it is a
+       * type rather than a flag on the control.
+       */
+      type: 'string' | 'text' | 'data' | 'number' | 'boolean' | 'color' | 'url';
       placeholder?: string;
     }
-  | { name: string; label: string; type: 'enum'; options: EnumOption[] };
+  | { name: string; label: string; type: 'enum'; options: EnumOption[] }
+  | {
+      name: string;
+      label: string;
+      /**
+       * The other odd one: a `color` holding several, comma-separated, whose control edits
+       * a row of swatches rather than one. It is a type rather than a `color` with a flag
+       * for the same reason `data` is — a bound one has to stay the string the component
+       * parses, and nothing else here would say so.
+       */
+      type: 'palette';
+      placeholder?: string;
+      /**
+       * The colours the component falls back to, in order, for a prop nobody has set.
+       *
+       * An arm of its own rather than a field on the shared one, for the reason `enum`
+       * has one: this is a list whose contents only that type has a use for.
+       *
+       * It is here rather than in the inspector because of D7. The Props tab is generated
+       * from this file and holds no per-component code — a swatch row that imported a
+       * chart's palette to seed itself would be exactly that, and would be read by the one
+       * panel that must never know which component it is drawing. The spec is also the
+       * only place that *can* say it: these colours are the component's own defaults, so
+       * naming them anywhere else would be a second copy to keep in step with the
+       * stylesheet.
+       */
+      swatches?: readonly string[];
+    };
 
 export interface ComponentSpec {
   /** Stable registry key, stored in the document and emitted by codegen. */
@@ -78,6 +119,25 @@ export interface ComponentSpec {
 
   props: PropSpec[];
   events: string[];
+
+  /**
+   * The type a handler's parameter takes, for an event that carries a value of its own
+   * rather than a DOM event.
+   *
+   * `Chart` is why. Its `onSelect` is called with the mark the visitor picked, not with a
+   * `MouseEvent`, so a handler written as `{{ event.label }}` is correct on the canvas —
+   * where `event` is whatever the component passed — and would not compile in the export,
+   * where the generator types every parameter from the *element* it landed on. That is
+   * exactly the class of bug the export's own `tsc` exists to catch, and the fix is for
+   * the registry to say what it passes (D7) rather than for the generator to keep a list.
+   *
+   * Written as the type's source text, and a structural one, so that nothing has to be
+   * imported into the generated page: the payload is a plain object, and an object type
+   * describes it exactly. Keyed by event name — a component can have one event that
+   * carries data and another that does not.
+   */
+  eventPayloads?: Record<string, string>;
+
   acceptsChildren: boolean;
   /** img, input — never takes children, and drops onto it target its parent instead. */
   isVoid?: boolean;
@@ -105,6 +165,27 @@ export interface ComponentSpec {
    * panel from depending on the iframe having painted.
    */
   layout?: 'flex' | 'grid';
+
+  /**
+   * Style properties this component cannot honour, named as the Design tab names them
+   * (`fontSize`, not `font-size`). The fields are hidden rather than shown doing nothing.
+   *
+   * This is `layout` pointed the other way, and it exists for the same reason: the Design
+   * tab decides what to offer by asking the registry (D7), because the document cannot
+   * answer either question. There a spec opens rows the node does not know it wants; here
+   * it closes rows the node would accept and then ignore.
+   *
+   * It is not an escape hatch for the one-class invariant. A component whose *own*
+   * stylesheet out-declares the inspector is a bug in `css.ts` — the descendant rule
+   * should be relative (`0.75em`) or `inherit` so the control starts working. This is only
+   * for the cases where no stylesheet could help: a chart draws its text inside a
+   * `viewBox`, where a font size is in user units rather than CSS pixels and the Design
+   * tab's number would mean something else entirely.
+   *
+   * The bar for adding a key is therefore high, and it is "no declaration could make this
+   * work", not "this is awkward to make work".
+   */
+  unsupportedStyles?: readonly string[];
 
   /**
    * Whether the implementation answers the *reader* — a table whose rows can be dragged
@@ -235,6 +316,22 @@ export function coerceToProp(value: unknown, prop: PropSpec): Json | undefined {
   if (value === undefined || value === null) return undefined;
 
   switch (prop.type) {
+    /*
+     * Handed over as it stands.
+     *
+     * This is the canvas half of `as: 'data'` in an emit template, and the two have to be
+     * the same decision or a table bound to a query renders as its own JSON on the canvas
+     * and as a table in the export — which is D6 broken in the direction that matters
+     * least to a snapshot and most to whoever is looking at the canvas.
+     *
+     * Narrowed only to what a document can hold, for `asJson`'s reason: an expression can
+     * produce a function, and a prop is serialized into the neighbours around it.
+     */
+    case 'data':
+      return typeof value === 'object' || typeof value === 'string' || typeof value === 'number'
+        ? (value as Json)
+        : undefined;
+
     case 'number': {
       const numeric = typeof value === 'number' ? value : Number(value);
       return Number.isFinite(numeric) ? numeric : undefined;

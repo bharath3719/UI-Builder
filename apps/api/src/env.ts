@@ -49,12 +49,14 @@ const EnvSchema = z.object({
    * network. See src/lib/outbound.ts for why the default differs by environment: local
    * development routinely points at localhost, and production must not be able to reach
    * the metadata service.
+   *
+   * Left as the raw choice here and defaulted after the parse, against the *validated*
+   * NODE_ENV rather than against `process.env.NODE_ENV` read a second time. Zod cannot see
+   * a sibling field from inside a transform, and a field whose security depends on
+   * re-reading the environment behind the schema's back is one whose two readings can
+   * disagree. See `allowsPrivateNetwork` below.
    */
-  INTEGRATION_ALLOW_PRIVATE_NETWORK: z
-    .enum(['true', 'false'])
-    .optional()
-    .transform((value) => value ?? (process.env.NODE_ENV === 'production' ? 'false' : 'true'))
-    .transform((value) => value === 'true'),
+  INTEGRATION_ALLOW_PRIVATE_NETWORK: z.enum(['true', 'false']).optional(),
 
   /*
    * Object storage for uploaded assets — S3, or anything speaking its API (R2, MinIO).
@@ -108,3 +110,53 @@ export type Env = typeof env;
 
 export const isProduction = env.NODE_ENV === 'production';
 export const isTest = env.NODE_ENV === 'test';
+
+/**
+ * Whether a test run may reach this machine's own network.
+ *
+ * Explicit setting if there is one; otherwise off in production and on everywhere else.
+ * Resolved here rather than in the schema so it reads the NODE_ENV that was actually
+ * validated — see the field's own note.
+ */
+export const allowsPrivateNetwork =
+  env.INTEGRATION_ALLOW_PRIVATE_NETWORK === undefined
+    ? !isProduction
+    : env.INTEGRATION_ALLOW_PRIVATE_NETWORK === 'true';
+
+/**
+ * Whether the process looks deployed while not saying it is.
+ *
+ * Three things weaken at once when NODE_ENV is anything but `production`: the refresh
+ * cookie loses `Secure` (modules/auth/tokens.ts), the SSRF guard starts allowing the
+ * private network (lib/outbound.ts), and pino-pretty becomes the logger. Each of those is
+ * correct for development and none of them is correct on a public address, so a deployment
+ * that forgets the variable is silently three settings weaker than it reads as.
+ *
+ * Binding off-loopback is the signal, because that is the thing a laptop does not do: the
+ * default HOST is 127.0.0.1 and compose sets 0.0.0.0 precisely so Caddy can reach it.
+ * There is nothing to *enforce* here — refusing to boot would be a new way to take an
+ * already-running deployment down — so this is a warning, printed where the operator is.
+ */
+export function environmentWarnings(): string[] {
+  const warnings: string[] = [];
+  const loopback = ['127.0.0.1', '::1', 'localhost'];
+
+  if (!isProduction && !isTest && !loopback.includes(env.HOST)) {
+    warnings.push(
+      `NODE_ENV is "${env.NODE_ENV}" but the API is binding to ${env.HOST}, which is not ` +
+        'loopback. If this is a real deployment, set NODE_ENV=production: without it the ' +
+        'refresh cookie is not marked Secure and integration requests may reach private ' +
+        'addresses.',
+    );
+  }
+
+  if (allowsPrivateNetwork) {
+    warnings.push(
+      'Integration test runs may reach private addresses ' +
+        '(INTEGRATION_ALLOW_PRIVATE_NETWORK). Correct for local development; in production ' +
+        'this is the path a server-side request forgery takes to the metadata service.',
+    );
+  }
+
+  return warnings;
+}

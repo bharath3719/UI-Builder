@@ -287,3 +287,86 @@ describe('cyclicQueries', () => {
     expect(cyclicQueries([]).size).toBe(0);
   });
 });
+
+/**
+ * A Power BI query, from the request the hook would send to the shape the bindings see.
+ *
+ * `buildRequest` is what is reachable without rendering, and it is also where the two
+ * facts worth pinning live: that the request carries the shape, and that the shape is what
+ * makes `queries.sales.data` an array of rows rather than an envelope.
+ */
+describe('buildRequest for a Power BI query', () => {
+  const catalog: IntegrationCatalog = {
+    pbi: {
+      connection: {
+        baseUrl: 'https://api.powerbi.com',
+        auth: {
+          type: 'oauth2',
+          tokenUrl: 'https://login.microsoftonline.com/t/oauth2/v2.0/token',
+          clientId: 'app',
+          scope: 'https://analysis.windows.net/powerbi/api/.default',
+        },
+        defaultHeaders: {},
+        contentType: 'application/json',
+      },
+      endpoints: {},
+      secret: 'minted-token',
+    },
+  };
+
+  function dax(source: string, datasetId = 'ds-1'): QueryDef {
+    return {
+      id: 'q1',
+      name: 'sales',
+      runOnLoad: false,
+      source: { kind: 'powerbi', integrationId: 'pbi', datasetId, groupId: 'grp-1', dax: source },
+    };
+  }
+
+  it('posts the statement to the dataset, with the minted token', () => {
+    const request = buildRequest(dax('EVALUATE Sales'), evaluatorFor(), catalog);
+
+    expect(request.method).toBe('POST');
+    expect(request.url).toBe(
+      'https://api.powerbi.com/v1.0/myorg/groups/grp-1/datasets/ds-1/executeQueries',
+    );
+    expect(request.headers.Authorization).toBe('Bearer minted-token');
+    expect(request.shape).toBe('powerbi');
+  });
+
+  it('reads page state inside the DAX, which is what makes a filter re-query', () => {
+    const request = buildRequest(
+      dax('EVALUATE FILTER(Sales, Sales[Region] = "{{ state.region }}")'),
+      evaluatorFor({ region: 'North' }),
+      catalog,
+    );
+
+    expect(request.body).toContain('Sales[Region] = \\"North\\"');
+  });
+
+  /**
+   * The request key is what decides whether a render described a *new* request. A query
+   * whose DAX reads state has to re-run when that state changes, and not otherwise.
+   */
+  it('changes its key when the state its DAX reads changes', () => {
+    const query = dax('EVALUATE FILTER(Sales, Sales[Region] = "{{ state.region }}")');
+
+    const north = buildRequest(query, evaluatorFor({ region: 'North' }), catalog);
+    const alsoNorth = buildRequest(query, evaluatorFor({ region: 'North' }), catalog);
+    const south = buildRequest(query, evaluatorFor({ region: 'South' }), catalog);
+
+    expect(north.key).toBe(alsoNorth.key);
+    expect(north.key).not.toBe(south.key);
+  });
+
+  it('reports a connection that is not in the catalogue yet', () => {
+    const request = buildRequest(dax('EVALUATE Sales'), evaluatorFor(), {});
+
+    expect(request.error).toContain('no longer available');
+    expect(request.shape).toBe('raw');
+  });
+
+  it('leaves an ordinary query unshaped', () => {
+    expect(buildRequest(query({ id: 'q1', name: 'a' }), evaluatorFor()).shape).toBe('raw');
+  });
+});

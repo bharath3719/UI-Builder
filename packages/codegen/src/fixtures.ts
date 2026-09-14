@@ -15,6 +15,8 @@
 import {
   DEFAULT_THEME,
   DOC_SCHEMA_VERSION,
+  POWERBI_BASE_URL,
+  POWERBI_SCOPE,
   exprProp,
   makeNode,
   makePage,
@@ -31,6 +33,7 @@ import {
   type SymbolDef,
   type SymbolProp,
 } from '@ui-builder/schema';
+import type { ExportIntegrations } from './integrations.js';
 
 interface NodeInit {
   id: string;
@@ -784,6 +787,235 @@ export function slotDoc(): ProjectDoc {
     name: 'Slot Demo',
     pages: [home],
     symbols: [panel, plain],
+    theme: THEME,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Power BI                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The connection {@link powerbiDoc} binds against.
+ *
+ * A fixture needs one because an integration query is the only query kind whose request
+ * is not written down in the document: the URL, the auth and the headers come from a
+ * connection the workspace holds, and a generator handed no connections emits a warning
+ * and no query at all. So a doc alone could not exercise this path.
+ */
+export function powerbiIntegrations(): ExportIntegrations {
+  return {
+    'int-pbi': {
+      slug: 'contoso-bi',
+      name: 'Contoso BI',
+      connection: {
+        baseUrl: POWERBI_BASE_URL,
+        // `oauth2` rather than `bearer`, because the two are the same in the export and
+        // only one of them says so. The generated page reads a token from the
+        // environment either way — see `authCode` in `integrations.ts` — and a fixture
+        // carrying the arm that has a *different* server-side story is what keeps that
+        // equivalence deliberate rather than accidental.
+        auth: {
+          type: 'oauth2',
+          tokenUrl: 'https://login.microsoftonline.com/a-tenant/oauth2/v2.0/token',
+          clientId: '00000000-0000-0000-0000-000000000000',
+          scope: POWERBI_SCOPE,
+        },
+        defaultHeaders: {},
+        contentType: 'application/json',
+      },
+      endpoints: {},
+    },
+  };
+}
+
+/**
+ * A page whose data is a DAX query.
+ *
+ * Here rather than only in a unit test for the reason the roster table in
+ * {@link interactiveDoc} is: the response reaches the page as `Record<string, unknown>`
+ * rows, and every use of one — `item.Region` in a repeat, `cell(row, 'Total')` in a table
+ * — has to *typecheck* in the generated project under `strict`. The export's own `tsc` is
+ * the only thing that checks that, and a snapshot would happily record code that does not
+ * compile.
+ *
+ * The bound dataset id is the second half of it. A literal id becomes a literal URL, which
+ * is the common case and the readable one; an id that reads state has to be concatenated
+ * with `encodeURIComponent` at the seam, and only one of those two paths is exercised by
+ * a document that never binds one.
+ */
+export function powerbiDoc(): ProjectDoc {
+  const queries: QueryDef[] = [
+    {
+      id: 'q-sales',
+      name: 'sales',
+      runOnLoad: true,
+      source: {
+        kind: 'powerbi',
+        integrationId: 'int-pbi',
+        datasetId: 'e1f2a3b4-0000-4000-8000-abcdefabcdef',
+        groupId: '11112222-3333-4444-5555-666677778888',
+        dax: 'EVALUATE SUMMARIZECOLUMNS(Sales[Region], "Total", SUM(Sales[Amount]))',
+      },
+    },
+    // A dataset chosen at run time, and DAX that reads state: the concatenated URL and the
+    // `JSON.stringify` body, which are the branches the literal query above does not take.
+    //
+    // On load, because it is the cross-filter's other half: the chart writes `state.region`
+    // and this re-sends itself because the request it describes changed. That is the whole
+    // mechanism, and the reason the chart's handler is one step long.
+    {
+      id: 'q-detail',
+      name: 'detail',
+      runOnLoad: true,
+      source: {
+        kind: 'powerbi',
+        integrationId: 'int-pbi',
+        datasetId: '{{ state.dataset }}',
+        dax: 'EVALUATE FILTER(Sales, Sales[Region] = "{{ state.region }}")',
+      },
+    },
+    // Grouped by two columns, which is the answer a chart needs a *series* field to read:
+    // one row per month per region rather than one column per region. Nothing else in the
+    // fixtures produces that shape, and it is half of what a Power BI report is made of.
+    {
+      id: 'q-trend',
+      name: 'trend',
+      runOnLoad: true,
+      source: {
+        kind: 'powerbi',
+        integrationId: 'int-pbi',
+        datasetId: 'e1f2a3b4-0000-4000-8000-abcdefabcdef',
+        dax: 'EVALUATE SUMMARIZECOLUMNS(Sales[Month], Sales[Region], "Total", SUM(Sales[Amount]))',
+      },
+    },
+  ];
+
+  const home = page(
+    'pg-home',
+    'Home',
+    '/',
+    'root',
+    [
+      {
+        id: 'root',
+        type: 'VStack',
+        name: 'Page',
+        children: ['heading', 'empty', 'by-region', 'trend', 'share', 'region', 'grid', 'refresh'],
+        props: { gap: '4' },
+        styles: { base: { default: { padding: 32, minHeight: '100%' } } },
+      },
+      { id: 'heading', type: 'Heading', name: 'Title', props: { level: '1', text: 'Sales' } },
+      {
+        id: 'empty',
+        type: 'Text',
+        name: 'Nothing yet',
+        props: { text: 'No rows.', tone: 'muted' },
+        showIf: '{{ !queries.sales.data }}',
+      },
+      /*
+       * The cross-filter, and the reason this fixture has a chart at all.
+       *
+       * `data` is the one emit form with no coercion around it (`as: 'data'`), so the
+       * array reaches the component as an array; `selected` reads back the variable the
+       * chart's own handler writes; and `onSelect` is an event that carries a *value*
+       * rather than a DOM event, so `event.label` has to typecheck in the export against
+       * the type the spec declares rather than against a MouseEvent.
+       *
+       * One step, and deliberately: the detail query's DAX reads `state.region` and runs
+       * on load, so writing the variable *is* the fetch. A `runQuery` after the write
+       * would send the filter the page had before it — see `staleQueryWarnings`, which
+       * is what says so out loud.
+       */
+      {
+        id: 'by-region',
+        type: 'Chart',
+        name: 'By region',
+        props: { kind: 'bar', labelField: 'Region', valueField: 'Total', showGrid: true },
+        bound: { data: '{{ queries.sales.data }}', selected: '{{ state.region }}' },
+        events: {
+          onSelect: [
+            { kind: 'setFilter', stateId: 'sv-region', value: exprProp('{{ event.label }}') },
+          ],
+        },
+      },
+      /*
+       * The many-series half, and the one chart here that is not upright.
+       *
+       * `seriesField` pivots the two-column grouping into one segment per region, which
+       * is the emit form the single-series charts never reach; `horizontal` is a boolean
+       * attribute written bare, so a chart that is *not* sideways has to leave it off
+       * entirely — "absent" and `false` mean one thing to the component, and the snapshot
+       * beside this one is what says they still do.
+       */
+      {
+        id: 'trend',
+        type: 'Chart',
+        name: 'By month',
+        props: {
+          kind: 'stacked',
+          labelField: 'Month',
+          valueField: 'Total',
+          seriesField: 'Region',
+          horizontal: true,
+          showLegend: true,
+          showGrid: true,
+        },
+        bound: { data: '{{ queries.trend.data }}', selected: '{{ state.region }}' },
+      },
+      // The other half of `as: 'data'`: a series nobody bound, which is the text that was
+      // typed and takes the same path a `Table`'s typed-out rows do.
+      {
+        id: 'share',
+        type: 'Chart',
+        name: 'Share',
+        props: {
+          kind: 'donut',
+          data: 'Direct | 42\nPartner | 31\nOnline | 27',
+          showLegend: true,
+          showValues: true,
+        },
+      },
+      // A repeat over the rows, reading a column by the *short* name — which only exists
+      // because the adapter stripped the `Sales[...]` qualifier off it.
+      {
+        id: 'region',
+        type: 'Card',
+        name: 'Region',
+        children: ['region-name'],
+        repeat: '{{ queries.sales.data }}',
+      },
+      { id: 'region-name', type: 'Text', name: 'Name', bound: { text: '{{ item.Region }}' } },
+      {
+        id: 'grid',
+        type: 'Table',
+        name: 'By region',
+        props: { columns: 'Region | Total', fields: 'Region | Total', emptyText: 'No rows.' },
+        bound: { rows: '{{ queries.sales.data }}' },
+      },
+      {
+        id: 'refresh',
+        type: 'Button',
+        name: 'Load detail',
+        props: { text: 'Load detail' },
+        events: { onClick: [{ kind: 'runQuery', queryId: 'q-detail' }] },
+      },
+    ],
+    {
+      state: [
+        { id: 'sv-dataset', name: 'dataset', type: 'string', initial: '' },
+        { id: 'sv-region', name: 'region', type: 'string', initial: 'North' },
+      ],
+      queries,
+    },
+  );
+
+  return {
+    schemaVersion: DOC_SCHEMA_VERSION,
+    id: 'doc-powerbi',
+    name: 'Power BI Demo',
+    pages: [home],
+    symbols: [],
     theme: THEME,
   };
 }

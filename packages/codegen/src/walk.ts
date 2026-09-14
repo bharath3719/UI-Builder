@@ -315,7 +315,7 @@ function textOfProp(prop: PropValue, helpers: Helpers): string {
 /**
  * One action step as the statements it runs.
  *
- * A closed union of six, which is what §10 promised would keep the generated handler
+ * A closed union of eight, which is what §10 promised would keep the generated handler
  * readable: this is a translation, not an interpreter shipped to the user. A step naming
  * something that has since been deleted emits nothing and says so — the runtime reports
  * the same thing to the console, and an export has no console anyone is watching.
@@ -347,6 +347,25 @@ function stepStatements(step: ActionStep, node: Node, event: string, walk: Walk)
       const held = `current${isIdentifier(variable.name) ? `.${variable.name}` : `[${stringLiteral(variable.name)}]`}`;
       return [
         `setState((current) => ({ ...current, ${objectKey(variable.name)}: !${truthyCode(held, false, walk.helpers)} }));`,
+      ];
+    }
+
+    case 'setFilter': {
+      const variable = walk.state.find((candidate) => candidate.id === step.stateId);
+      if (!variable) {
+        walk.warnings.push(`${where}: filters on a variable that no longer exists — step dropped.`);
+        return [];
+      }
+      const held = `current${isIdentifier(variable.name) ? `.${variable.name}` : `[${stringLiteral(variable.name)}]`}`;
+      // The updater form and a comparison against `current`, which is the reducer's rule
+      // in the runtime written out: the value a second click clears has to be the one the
+      // store holds, not the one this render closed over. `picked` is named so the
+      // expression behind it is evaluated once rather than on both sides of the ternary.
+      return [
+        'setState((current) => {',
+        `  const picked = ${textOfProp(step.value, walk.helpers)};`,
+        `  return { ...current, ${objectKey(variable.name)}: ${textCode(held, '', walk.helpers)} === picked ? '' : picked };`,
+        '});',
       ];
     }
 
@@ -396,11 +415,76 @@ function stepStatements(step: ActionStep, node: Node, event: string, walk: Walk)
 function stepSources(steps: readonly ActionStep[]): string[] {
   return steps.flatMap((step) => {
     if (step.kind === 'custom') return [step.code];
-    if (step.kind === 'setState') return step.value.kind === 'expr' ? [step.value.code] : [];
+    if (step.kind === 'setState' || step.kind === 'setFilter') {
+      return step.value.kind === 'expr' ? [step.value.code] : [];
+    }
     if (step.kind === 'navigate') return step.to.kind === 'expr' ? [step.to.code] : [];
     if (step.kind === 'showToast') return step.message.kind === 'expr' ? [step.message.code] : [];
     return [];
   });
+}
+
+/** Every piece of template source a query's *request* is written from. */
+function requestSources(query: QueryDef): string[] {
+  const source = query.source;
+  if (source.kind === 'url') {
+    return [source.url, source.body ?? '', ...Object.values(source.headers ?? {})];
+  }
+  if (source.kind === 'integration') return Object.values(source.variables ?? {});
+  return [source.datasetId, source.groupId ?? '', source.dax];
+}
+
+/**
+ * Handlers that set a filter and then run a query that reads it.
+ *
+ * The step order says "filter, then fetch"; what runs is "fetch with the filter it had
+ * before". Steps see the scope as it was when the event fired — the interpreter says so
+ * and the generated handler is the same, because `queries.x.run()` sends the request this
+ * render built and React has not re-rendered yet. It is not a bug in either one, and it is
+ * invisible: the page fetches, the page updates, and the numbers are one click stale.
+ *
+ * The answer is to delete the step. A query that runs on load re-sends itself whenever the
+ * request it describes changes, which is the whole reason a filter bar needs no wiring —
+ * so the write alone is the cross-filter, and the `runQuery` after it is both redundant and
+ * wrong. Said rather than fixed, because fixing it means a `run` that takes the request as
+ * an argument, which is a different feature (and the one pagination is waiting on).
+ *
+ * **`setFilter` only**, deliberately. `setState` followed by a query that reads the same
+ * variable is the identical mechanic, and is *not* warned about, because there the write
+ * is the author's own value and they can compensate for the ordering — `{{ state.count + 1 }}`
+ * in the request, which reads the stale variable on purpose and sends the right number. A
+ * check that could not tell those apart would fire on correct pages. A filter has no such
+ * form: what it writes is the category that was clicked, and there is nothing to add to it.
+ */
+function staleQueryWarnings(steps: readonly ActionStep[], where: string, walk: Walk): string[] {
+  const written = new Set<string>();
+  const warnings: string[] = [];
+
+  for (const step of steps) {
+    if (step.kind === 'setFilter') {
+      const variable = walk.state.find((candidate) => candidate.id === step.stateId);
+      if (variable) written.add(variable.name);
+      continue;
+    }
+
+    if (step.kind !== 'runQuery' || written.size === 0) continue;
+
+    const query = walk.queries.find((candidate) => candidate.id === step.queryId);
+    if (!query) continue;
+
+    const text = requestSources(query).join('\n');
+    const stale = [...written].filter((name) => text.includes(`state.${name}`));
+    if (stale.length === 0) continue;
+
+    warnings.push(
+      `${where}: filters on ${stale.map((name) => `state.${name}`).join(' and ')} and then ` +
+        `runs "${query.name}", whose request reads it — a step cannot see a write made ` +
+        `beside it, so the request will carry the previous value. Drop the step: a query ` +
+        `that runs on load re-sends itself when its request changes.`,
+    );
+  }
+
+  return warnings;
 }
 
 /**
@@ -431,14 +515,26 @@ function emitHandlers(
     const body = steps.flatMap((step) => stepStatements(step, node, event, walk));
     if (body.length === 0) continue;
 
+    walk.warnings.push(
+      ...staleQueryWarnings(steps, `"${node.name}" (${node.id}) · ${event}`, walk),
+    );
+
     const name = claimName(walk.names, handlerName(node.name, event));
     const asynchronous = body.some((line) => line.startsWith('await '));
 
     let parameter = '';
     if (readsEvent(stepSources(steps))) {
-      const eventType = EVENT_TYPES[event] ?? 'SyntheticEvent';
-      walk.eventTypes.add(eventType);
-      parameter = `event: ${eventType}<${ELEMENT_TYPES[tag] ?? 'HTMLElement'}>`;
+      // A component that passes a value of its own says so in its spec, and then the
+      // element the handler landed on says nothing about what `event` is — a Chart's
+      // `onSelect` is a mark, not a MouseEvent on the div the chart happens to draw in.
+      const payload = spec.eventPayloads?.[event];
+      if (payload === undefined) {
+        const eventType = EVENT_TYPES[event] ?? 'SyntheticEvent';
+        walk.eventTypes.add(eventType);
+        parameter = `event: ${eventType}<${ELEMENT_TYPES[tag] ?? 'HTMLElement'}>`;
+      } else {
+        parameter = `event: ${payload}`;
+      }
     }
 
     statements.push(

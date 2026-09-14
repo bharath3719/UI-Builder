@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { ApiAuth } from './api/integrations.js';
+import { POWERBI_SCOPE, type ApiAuth } from './api/integrations.js';
 import {
+  adaptQueryData,
   buildIntegrationRequest,
+  buildQueryRequest,
+  powerbiExecuteUrl,
   variableEvaluator,
+  type IntegrationCatalog,
   type RequestConnection,
   type RequestEndpoint,
 } from './integrationRequest.js';
@@ -231,5 +235,163 @@ describe('variableEvaluator', () => {
   /** A half-filled test form should still show the request it would send. */
   it('resolves an unknown name to empty rather than throwing', () => {
     expect(variableEvaluator({})('missing')).toBe('');
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* OAuth2, and Power BI                                                        */
+/* -------------------------------------------------------------------------- */
+
+const OAUTH: ApiAuth = {
+  type: 'oauth2',
+  tokenUrl: 'https://login.microsoftonline.com/t/oauth2/v2.0/token',
+  clientId: 'app',
+  scope: POWERBI_SCOPE,
+};
+
+describe('oauth2 auth', () => {
+  /**
+   * The whole of what this scheme means down here. By the time a request is built the
+   * exchange has already happened on the server, so `secret` is an access token and the
+   * only correct thing to do with it is what `bearer` does.
+   */
+  it('sends the minted token as a bearer', () => {
+    const request = buildIntegrationRequest(
+      connection({ auth: OAUTH }),
+      endpoint(),
+      'minted-token',
+      noVars,
+    );
+
+    expect(request.headers.Authorization).toBe('Bearer minted-token');
+  });
+
+  it('sends no Authorization when there is no token yet', () => {
+    const request = buildIntegrationRequest(connection({ auth: OAUTH }), endpoint(), null, noVars);
+
+    expect(request.headers.Authorization).toBeUndefined();
+  });
+});
+
+describe('powerbiExecuteUrl', () => {
+  it('addresses a dataset in a workspace', () => {
+    expect(powerbiExecuteUrl('https://api.powerbi.com', 'ds-1', 'grp-1')).toBe(
+      'https://api.powerbi.com/v1.0/myorg/groups/grp-1/datasets/ds-1/executeQueries',
+    );
+  });
+
+  it('addresses a dataset with no workspace', () => {
+    expect(powerbiExecuteUrl('https://api.powerbi.com', 'ds-1', '')).toBe(
+      'https://api.powerbi.com/v1.0/myorg/datasets/ds-1/executeQueries',
+    );
+  });
+
+  it('encodes both ids, which are template output and can hold anything', () => {
+    expect(powerbiExecuteUrl('https://api.powerbi.com', 'a/b', 'c d')).toContain(
+      '/groups/c%20d/datasets/a%2Fb/',
+    );
+  });
+});
+
+describe('buildQueryRequest for a Power BI source', () => {
+  const catalog: IntegrationCatalog = {
+    pbi: {
+      connection: {
+        baseUrl: 'https://api.powerbi.com',
+        auth: OAUTH,
+        defaultHeaders: { 'X-Trace': 'on' },
+        // Deliberately not JSON: the body's content type is the Power BI API's decision,
+        // not this connection's, and a 415 is what it would cost to get that wrong.
+        contentType: 'text/plain',
+      },
+      endpoints: {},
+      secret: 'minted-token',
+    },
+  };
+
+  const source = {
+    kind: 'powerbi',
+    integrationId: 'pbi',
+    datasetId: 'ds-1',
+    groupId: 'grp-1',
+    dax: 'EVALUATE Sales',
+  } as const;
+
+  /** Page scope, standing in for the real evaluator. */
+  const scope = (values: Record<string, string>) => (code: string) => values[code.trim()] ?? '';
+
+  it('posts the DAX to the dataset it names', () => {
+    const built = buildQueryRequest(source, catalog, scope({}));
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+
+    expect(built.request.method).toBe('POST');
+    expect(built.request.url).toBe(
+      'https://api.powerbi.com/v1.0/myorg/groups/grp-1/datasets/ds-1/executeQueries',
+    );
+    expect(JSON.parse(built.request.body ?? '')).toEqual({
+      queries: [{ query: 'EVALUATE Sales' }],
+      serializerSettings: { includeNulls: true },
+    });
+  });
+
+  it('sends JSON whatever the connection is configured for, plus its default headers', () => {
+    const built = buildQueryRequest(source, catalog, scope({}));
+    if (!built.ok) throw new Error('expected a request');
+
+    expect(built.request.headers['Content-Type']).toBe('application/json');
+    expect(built.request.headers['X-Trace']).toBe('on');
+    expect(built.request.headers.Authorization).toBe('Bearer minted-token');
+  });
+
+  it('interpolates page scope into the DAX, the dataset and the workspace', () => {
+    const built = buildQueryRequest(
+      {
+        kind: 'powerbi',
+        integrationId: 'pbi',
+        datasetId: '{{ state.dataset }}',
+        groupId: '{{ state.group }}',
+        dax: 'EVALUATE TOPN({{ state.limit }}, Sales)',
+      },
+      catalog,
+      scope({ 'state.dataset': 'ds-9', 'state.group': 'grp-9', 'state.limit': '10' }),
+    );
+    if (!built.ok) throw new Error('expected a request');
+
+    expect(built.request.url).toContain('/groups/grp-9/datasets/ds-9/');
+    expect(JSON.parse(built.request.body ?? '')).toMatchObject({
+      queries: [{ query: 'EVALUATE TOPN(10, Sales)' }],
+    });
+  });
+
+  it('asks for the rows to be unwrapped rather than pointed at', () => {
+    const built = buildQueryRequest(source, catalog, scope({}));
+    if (!built.ok) throw new Error('expected a request');
+
+    expect(built.shape).toBe('powerbi');
+    expect(built.resultPath).toBe('');
+  });
+
+  it('reports a connection that has gone rather than throwing', () => {
+    const built = buildQueryRequest({ ...source, integrationId: 'other' }, catalog, scope({}));
+
+    expect(built.ok).toBe(false);
+    if (built.ok) return;
+    expect(built.error).toContain('no longer available');
+  });
+});
+
+describe('adaptQueryData', () => {
+  it('leaves an ordinary response exactly as it arrived', () => {
+    const body = { items: [{ id: 1 }] };
+    expect(adaptQueryData('raw', body)).toBe(body);
+  });
+
+  it('unwraps a Power BI response into its rows', () => {
+    expect(
+      adaptQueryData('powerbi', {
+        results: [{ tables: [{ rows: [{ 'Sales[Region]': 'North' }] }] }],
+      }),
+    ).toEqual([{ Region: 'North' }]);
   });
 });

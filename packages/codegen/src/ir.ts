@@ -127,9 +127,22 @@ function attrText(attr: JsxAttr): string {
   if (attr.kind === 'expr') return `${attr.name}={${attr.code}}`;
   // A double-quoted JSX attribute cannot hold a double quote, and escaping is not
   // something JSX attribute strings do — so a value carrying one becomes an expression.
-  return attr.value.includes('"')
-    ? `${attr.name}={${stringLiteral(attr.value)}}`
-    : `${attr.name}="${attr.value}"`;
+  //
+  // A newline is the same class of hazard and arrived with the first prop that could hold
+  // one in an *attribute* rather than in a text child (a Chart's typed-out series). Written
+  // between quotes it is legal JSX whose meaning is the transform's to decide, and it walks
+  // the rest of the element out of the printer's indentation besides. As an expression it
+  // is an ordinary escape, and says the same thing under every transform.
+  const risky = [...attr.value].some(
+    (character) =>
+      character === '"' ||
+      character === '\n' ||
+      character === '\r' ||
+      character.codePointAt(0) === LINE_SEPARATOR ||
+      character.codePointAt(0) === PARAGRAPH_SEPARATOR,
+  );
+
+  return risky ? `${attr.name}={${stringLiteral(attr.value)}}` : `${attr.name}="${attr.value}"`;
 }
 
 /** Re-indents an already-formatted block of statements to sit `depth` levels in. */

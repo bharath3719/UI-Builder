@@ -1,11 +1,12 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type {
-  ApiErrorResponse,
-  ApiIntegrationSecret,
-  ApiIntegrationSummary,
-  TestApiEndpointResponse,
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  POWERBI_SCOPE,
+  type ApiErrorResponse,
+  type ApiIntegrationSecret,
+  type ApiIntegrationSummary,
+  type TestApiEndpointResponse,
 } from '@ui-builder/schema';
 import { createTestApi, type TestApi } from '../../test/api.js';
 import {
@@ -706,5 +707,184 @@ describe('POST .../endpoints/:id/test', () => {
     );
 
     expect(response.statusCode).toBe(403);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* OAuth2 client credentials                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The scheme where "read the credential" is an outbound call rather than a decrypt.
+ *
+ * `fetch` is stubbed here rather than answered by the local server above, because the
+ * token endpoint must be https — a client secret goes out on that request, and the
+ * contract refuses anything else. What is under test is the route's half of the exchange:
+ * that the client secret does not leave, that what does is the minted token, and that a
+ * refusal arrives as something the studio can show.
+ */
+describe('oauth2 connections', () => {
+  const OAUTH = {
+    type: 'oauth2' as const,
+    tokenUrl: 'https://login.example.test/oauth2/v2.0/token',
+    clientId: 'client-1',
+    scope: POWERBI_SCOPE,
+  };
+
+  /** What the authorization server sent, so the assertions can be on what arrived. */
+  let sent: string[];
+
+  beforeEach(() => {
+    sent = [];
+    vi.stubGlobal('fetch', async (_url: unknown, init: { body?: string }) => {
+      sent.push(init.body ?? '');
+      return new Response(JSON.stringify({ access_token: 'minted-token', expires_in: 3600 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('returns a minted access token rather than the client secret', async () => {
+    const user = await api.register();
+    const workspace = await createWorkspace(api, user);
+    const integration = await createIntegration(api, user, workspace.id, {
+      auth: OAUTH,
+      secret: 'client-secret-123',
+    });
+
+    const response = await api.get(
+      `/api/workspaces/${workspace.id}/integrations/${integration.id}/secret`,
+      { as: user },
+    );
+
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json<ApiIntegrationSecret>();
+    expect(body.secret).toBe('minted-token');
+    expect(body.expiresAt).not.toBeNull();
+
+    // The claim the whole scheme rests on, asserted against the bytes rather than the field.
+    expect(response.body).not.toContain('client-secret-123');
+
+    // And the client secret did leave — to the authorization server, which is the only
+    // place it is supposed to go.
+    expect(sent[0]).toContain('client_secret=client-secret-123');
+  });
+
+  it('says when the token expires, which the other schemes cannot', async () => {
+    const user = await api.register();
+    const workspace = await createWorkspace(api, user);
+
+    const oauth = await createIntegration(api, user, workspace.id, {
+      auth: OAUTH,
+      secret: 'client-secret-123',
+    });
+    const bearer = await createIntegration(api, user, workspace.id, {
+      name: 'Plain bearer',
+      auth: { type: 'bearer' },
+      secret: 'sk-live-123',
+    });
+
+    const minted = await api.get(
+      `/api/workspaces/${workspace.id}/integrations/${oauth.id}/secret`,
+      { as: user },
+    );
+    const pasted = await api.get(
+      `/api/workspaces/${workspace.id}/integrations/${bearer.id}/secret`,
+      { as: user },
+    );
+
+    const expiry = minted.json<ApiIntegrationSecret>().expiresAt;
+    expect(expiry).not.toBeNull();
+    expect(Date.parse(expiry!)).toBeGreaterThan(Date.now());
+
+    // Not a claim that a pasted token is eternal — the honest statement that nobody told us.
+    expect(pasted.json<ApiIntegrationSecret>().expiresAt).toBeNull();
+  });
+
+  it('reports a refused client secret as something the panel can show', async () => {
+    const user = await api.register();
+    const workspace = await createWorkspace(api, user);
+    const integration = await createIntegration(api, user, workspace.id, {
+      auth: OAUTH,
+      secret: 'wrong',
+    });
+
+    vi.stubGlobal('fetch', async () => {
+      return new Response(
+        JSON.stringify({
+          error: 'invalid_client',
+          error_description: 'AADSTS7000215: Invalid client secret provided.',
+        }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+
+    const response = await api.get(
+      `/api/workspaces/${workspace.id}/integrations/${integration.id}/secret`,
+      { as: user },
+    );
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json<ApiErrorResponse>().error.message).toContain('AADSTS7000215');
+  });
+
+  it('mints once for a connection, however often it is read', async () => {
+    const user = await api.register();
+    const workspace = await createWorkspace(api, user);
+    const integration = await createIntegration(api, user, workspace.id, {
+      auth: OAUTH,
+      secret: 'client-secret-123',
+    });
+
+    const url = `/api/workspaces/${workspace.id}/integrations/${integration.id}/secret`;
+    await api.get(url, { as: user });
+    await api.get(url, { as: user });
+
+    expect(sent).toHaveLength(1);
+  });
+
+  /** Rotating a secret has to make the old token unreachable now, not on its next read. */
+  it('drops the cached token when the connection is changed', async () => {
+    const user = await api.register();
+    const workspace = await createWorkspace(api, user);
+    const integration = await createIntegration(api, user, workspace.id, {
+      auth: OAUTH,
+      secret: 'client-secret-123',
+    });
+
+    const url = `/api/workspaces/${workspace.id}/integrations/${integration.id}/secret`;
+    await api.get(url, { as: user });
+
+    await api.patch(`/api/workspaces/${workspace.id}/integrations/${integration.id}`, {
+      as: user,
+      body: { secret: 'rotated-456' },
+    });
+    await api.get(url, { as: user });
+
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toContain('client_secret=rotated-456');
+  });
+
+  it('refuses a token URL that is not https', async () => {
+    const user = await api.register();
+    const workspace = await createWorkspace(api, user);
+
+    const response = await api.post(`/api/workspaces/${workspace.id}/integrations`, {
+      as: user,
+      body: {
+        name: 'Insecure',
+        baseUrl: 'https://api.powerbi.com',
+        auth: { ...OAUTH, tokenUrl: 'http://login.example.test/token' },
+        secret: 'client-secret-123',
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
   });
 });

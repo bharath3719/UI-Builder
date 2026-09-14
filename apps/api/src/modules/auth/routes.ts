@@ -6,6 +6,7 @@ import {
   RegisterRequest,
 } from '@ui-builder/schema';
 import { getCurrentUser } from '../../plugins/auth.js';
+import { LOGIN_RATE_LIMIT, REFRESH_RATE_LIMIT } from '../../plugins/rateLimit.js';
 import { UnauthorizedError } from '../../lib/errors.js';
 import { parseBody } from '../../lib/validate.js';
 import * as authService from './service.js';
@@ -30,15 +31,23 @@ function completeSession(reply: FastifyReply, session: authService.Session): Aut
   };
 }
 
+/*
+ * The two routes that hash a password, and the one that mints from a cookie, carry their
+ * own ceiling — see `plugins/rateLimit.ts` for the numbers, why argon2 is what decides
+ * them, and why they are empty under test. Stated per route rather than by path prefix so
+ * that adding a route here is a decision about which limit it gets, not a silent
+ * inheritance of the global one.
+ */
+
 const authRoutes: FastifyPluginAsync = async (app) => {
-  app.post('/register', async (request, reply) => {
+  app.post('/register', LOGIN_RATE_LIMIT, async (request, reply) => {
     const body = parseBody(RegisterRequest, request);
     const session = await authService.register(app.db, body);
 
     return reply.status(201).send(completeSession(reply, session));
   });
 
-  app.post('/login', async (request, reply) => {
+  app.post('/login', LOGIN_RATE_LIMIT, async (request, reply) => {
     const body = parseBody(LoginRequest, request);
     const session = await authService.login(app.db, body);
 
@@ -49,7 +58,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
    * Renews an expiring access token. The refresh token comes from the cookie rather
    * than the body, so the studio never has to hold it in JavaScript.
    */
-  app.post('/refresh', async (request, reply) => {
+  app.post('/refresh', REFRESH_RATE_LIMIT, async (request, reply) => {
     const token = request.cookies[REFRESH_COOKIE_NAME];
     if (!token) {
       throw new UnauthorizedError('You are not signed in.');

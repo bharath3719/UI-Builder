@@ -205,7 +205,14 @@ describe('COMPONENT_CSS', () => {
     // selectors and out-specifies the `.ub-n-<id>` rule the inspector writes, so the
     // Design tab would silently fail to override it. `:where()` keeps the library at
     // one class of weight, which is what makes source order decide.
-    for (const [match] of COMPONENT_CSS.matchAll(/(?<!:where\()\[data-[a-z-]+/g)) {
+    //
+    // Comments come out first. This stylesheet explains itself in prose about the very
+    // selectors it writes, so a sentence naming `[data-series]` is ordinary and is not a
+    // rule — and a guard that fires on its own file's commentary is one whose next fix
+    // is to reword the comment rather than the CSS.
+    const rules = COMPONENT_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+
+    for (const [match] of rules.matchAll(/(?<!:where\()\[data-[a-z-]+/g)) {
       expect.fail(`${match} is not wrapped in :where() — it would out-specify a node rule`);
     }
   });

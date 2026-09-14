@@ -53,6 +53,7 @@ function hostFor(scope: Partial<ActionScope> = {}) {
     }),
     setState: (id, value) => log.push(`setState ${id}=${JSON.stringify(value)}`),
     toggleState: (id) => log.push(`toggleState ${id}`),
+    setFilter: (id, value) => log.push(`setFilter ${id}=${value}`),
     runQuery: async (id) => {
       log.push(`runQuery:start ${id}`);
       await Promise.resolve();
@@ -133,12 +134,25 @@ describe('runSteps', () => {
     expect(log).toEqual([`toggleState ${FLAG}`]);
   });
 
+  it('filters on a variable, handing the host the category as text', async () => {
+    // The comparison and the clearing are the store's, not this interpreter's: what a
+    // second click has to compare against is what was written, which a step running beside
+    // another write cannot see. Same division as `toggleState`.
+    const { host, log } = hostFor({ event: { label: 'North' } });
+    await runSteps(
+      [{ kind: 'setFilter', stateId: COUNT, value: exprProp('{{ event.label }}') }],
+      host,
+    );
+    expect(log).toEqual([`setFilter ${COUNT}=North`]);
+  });
+
   it('reports a step pointing at a variable that is gone, and does nothing', async () => {
     const { host, log, reports } = hostFor();
     await runSteps(
       [
         { kind: 'setState', stateId: 'deleted', value: staticProp(1) },
         { kind: 'toggleState', stateId: 'deleted' },
+        { kind: 'setFilter', stateId: 'deleted', value: staticProp('x') },
       ],
       host,
     );
@@ -147,6 +161,7 @@ describe('runSteps', () => {
     expect(reports).toEqual([
       'sets a variable that no longer exists',
       'toggles a variable that no longer exists',
+      'filters on a variable that no longer exists',
     ]);
   });
 

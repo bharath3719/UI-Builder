@@ -23,7 +23,80 @@
  * no `!important` — or the inspector stops working for that component with no error.
  */
 
+/**
+ * The chart's categorical palette — the same six colours the `.ub-chart` block below
+ * declares, as data.
+ *
+ * Exported because the inspector offers them: a palette control that starts from six
+ * blanks asks the author to invent a colour scheme, and one that starts from the chart's
+ * own asks them to adjust it. Written out here rather than interpolated into the
+ * stylesheet so that block still reads as the CSS it ships as; `css.test.ts` is what
+ * keeps the two from drifting.
+ *
+ * The first is the theme's own primary, so a single-series chart is the page's colour
+ * without anything being chosen. The rest are a hue ramp around it.
+ */
+export const CHART_PALETTE: readonly string[] = [
+  'var(--primary)',
+  'hsl(199 89% 48%)',
+  'hsl(160 60% 39%)',
+  'hsl(43 96% 48%)',
+  'hsl(280 55% 58%)',
+  'hsl(346 77% 55%)',
+];
+
+/**
+ * A palette prop read as the list of colours it holds.
+ *
+ * Split on the commas *between* colours and not on the ones inside them: `rgb(37, 99,
+ * 235)` is one colour, and a list a reader cannot write the commonest colour syntax into
+ * is a list that will be written wrong. Depth is what tells the two apart, which also
+ * makes `var(--brand, #eee)` survive.
+ *
+ * The chart has this function too, and has to: its file is shipped whole into an exported
+ * project and can import nothing from here. `Chart.test.ts` is what says the two agree.
+ */
+export function splitPalette(value: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let current = '';
+
+  for (const character of value) {
+    if (character === '(') depth += 1;
+    if (character === ')') depth = Math.max(0, depth - 1);
+
+    if (character === ',' && depth === 0) {
+      out.push(current);
+      current = '';
+      continue;
+    }
+
+    current += character;
+  }
+
+  out.push(current);
+  return out.map((colour) => colour.trim()).filter(Boolean);
+}
+
 export const COMPONENT_CSS = `
+/* --- How a size is written here ----------------------------------------------
+   A component's ROOT may size itself in pixels; anything INSIDE one is in em.
+
+   The Design tab writes its declarations onto .ub-n-<id>, which is the root. An
+   inheritable property gets to the inner text only by inheritance, and inheritance
+   loses to any declaration at all — so a header row saying font-size: 12px did not
+   lose a specificity contest with the inspector, it never entered one, and the Size
+   field silently did nothing on every component that draws its own text.
+
+   Each em below is the ratio the pixel value already was, against the parent it
+   actually has rather than against 16 — .ub-tool-call-state sits inside
+   .ub-tool-call-summary, so it is 12/13. Nothing moves at the default size; the
+   sizes simply became a scale instead of a set of constants.
+
+   The exception is a component that cannot honour the field whatever the sheet says.
+   A chart draws its labels inside a viewBox, where a length is in user units — it
+   declares that in ComponentSpec.unsupportedStyles and the field is hidden instead. */
+
 /* --- Canvas reset ------------------------------------------------------------
    The iframe is a fresh document, so the design gets its own reset rather than
    inheriting whatever the studio happens to apply. */
@@ -849,12 +922,12 @@ body {
   letter-spacing: -0.02em;
 }
 
-.ub-rich-text :where(h1) { font-size: 36px; }
-.ub-rich-text :where(h2) { font-size: 28px; }
-.ub-rich-text :where(h3) { font-size: 22px; }
-.ub-rich-text :where(h4) { font-size: 18px; }
-.ub-rich-text :where(h5) { font-size: 16px; }
-.ub-rich-text :where(h6) { font-size: 14px; }
+.ub-rich-text :where(h1) { font-size: 2.25em; }
+.ub-rich-text :where(h2) { font-size: 1.75em; }
+.ub-rich-text :where(h3) { font-size: 1.375em; }
+.ub-rich-text :where(h4) { font-size: 1.125em; }
+.ub-rich-text :where(h5) { font-size: 1em; }
+.ub-rich-text :where(h6) { font-size: 0.875em; }
 
 .ub-rich-text :where(ul),
 .ub-rich-text :where(ol) {
@@ -898,7 +971,7 @@ body {
 .ub-rich-text :where(pre code) {
   padding: 0;
   background: none;
-  font-size: 14px;
+  font-size: 0.875em;
   line-height: 1.6;
 }
 
@@ -980,7 +1053,7 @@ body {
 .ub-table-caption {
   padding-bottom: var(--space-3);
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: 0.9286em;
   text-align: left;
   caption-side: top;
 }
@@ -992,7 +1065,7 @@ body {
 .ub-table-header {
   padding: var(--ub-table-cell-y) var(--ub-table-cell-x);
   color: inherit;
-  font-size: 12px;
+  font-size: 0.8571em;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1062,6 +1135,196 @@ body {
   cursor: grabbing;
 }
 
+/* --- Chart -------------------------------------------------------------------
+   The categorical palette lives here rather than in the component, for the reason
+   the whole sheet exists: a colour written into the drawing would be a colour the
+   Design tab cannot reach and a theme cannot follow. The marks carry data-series
+   and pick their fill up from these, so re-theming a chart is re-declaring six
+   custom properties on it — which a node rule can do, since these are properties
+   rather than selectors and inherit with no specificity to lose (.ub-table above).
+
+   The first is the theme's own primary, so a single-series chart is the page's
+   colour without anything being chosen. The rest are a hue ramp around it. The
+   same six are exported as CHART_PALETTE above, which the inspector offers as the
+   starting point for a chart's own Colours.
+
+   A chart whose author named colours sets --ub-chart-mark on each mark instead,
+   where it outranks the [data-series] rules below — that is the one thing the mark
+   colours cannot be left to a selector for, since the list is as long as the author
+   made it and a stylesheet can only be written for a fixed number of slots. */
+
+.ub-chart {
+  --ub-chart-1: var(--primary);
+  --ub-chart-2: hsl(199 89% 48%);
+  --ub-chart-3: hsl(160 60% 39%);
+  --ub-chart-4: hsl(43 96% 48%);
+  --ub-chart-5: hsl(280 55% 58%);
+  --ub-chart-6: hsl(346 77% 55%);
+  /* Axis labels are secondary text, and used to say so by naming --muted-foreground
+     outright. That made them the one part of a chart the Design tab's Color could not
+     reach: a declaration on the node changed the color property, and nothing in the
+     drawing read it. Derived from currentColor instead, the de-emphasis is kept and the
+     field works — a chart set to a brand colour gets axis labels in a lighter version of
+     it, which is what the person setting it meant. */
+  --ub-chart-ink: color-mix(in srgb, currentColor 65%, transparent);
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 180px;
+  color: var(--foreground);
+}
+
+/* Fills the box it is given: the viewBox does the scaling, so a chart is sized by
+   the Design tab like anything else and never measures itself. */
+.ub-chart-plot {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: visible;
+}
+
+.ub-chart-empty {
+  margin: 0;
+  /* The same ink as the axis labels, and for the same reason: it is the chart talking
+     about itself rather than showing data, and it follows the node's Color. */
+  color: var(--ub-chart-ink);
+  font-size: 14px;
+  text-align: center;
+}
+
+/* Set on the mark, read by the mark: one declaration per series instead of one
+   rule per series per shape. */
+.ub-chart-bar,
+.ub-chart-slice,
+.ub-chart-key,
+.ub-chart-dot {
+  fill: var(--ub-chart-mark, var(--ub-chart-1));
+}
+
+.ub-chart-line {
+  fill: none;
+  stroke: var(--ub-chart-mark, var(--ub-chart-1));
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ub-chart-area {
+  fill: var(--ub-chart-mark, var(--ub-chart-1));
+  opacity: 0.18;
+}
+
+.ub-chart-slice {
+  stroke: var(--background);
+  stroke-width: 1.5;
+}
+
+/* A stack is read as parts of one bar, so its segments need an edge between them and a
+   fill that is not see-through — two areas at 18% laid on top of each other are a third
+   colour that is in neither of them, and a reader has no way to know which. */
+.ub-chart-plot:where([data-stacked]) .ub-chart-area {
+  opacity: 0.85;
+}
+
+.ub-chart-plot:where([data-stacked]) .ub-chart-bar {
+  stroke: var(--background);
+  stroke-width: 1;
+}
+
+/* A stacked chart is the only one whose numbers are written *on* a mark rather than
+   beside one, and the mark is whatever colour its series is — so a fill that reads on
+   the page reads on some of them and vanishes on the rest. The halo is what makes the
+   one colour work on all six: the text keeps the page's ink and carries the page's
+   background around it, the way a map label crosses a coastline. */
+.ub-chart-plot:where([data-stacked]) .ub-chart-value {
+  paint-order: stroke;
+  stroke: var(--background);
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+}
+
+.ub-chart :where([data-series='0']) {
+  --ub-chart-mark: var(--ub-chart-1);
+}
+
+.ub-chart :where([data-series='1']) {
+  --ub-chart-mark: var(--ub-chart-2);
+}
+
+.ub-chart :where([data-series='2']) {
+  --ub-chart-mark: var(--ub-chart-3);
+}
+
+.ub-chart :where([data-series='3']) {
+  --ub-chart-mark: var(--ub-chart-4);
+}
+
+.ub-chart :where([data-series='4']) {
+  --ub-chart-mark: var(--ub-chart-5);
+}
+
+.ub-chart :where([data-series='5']) {
+  --ub-chart-mark: var(--ub-chart-6);
+}
+
+/* What a cross-filter looks like from the chart that caused it. Dimmed rather than
+   hidden: the reader has to be able to see what the rest of the series was, or the
+   click has thrown away the comparison they were making. */
+.ub-chart-bar:where([data-dim]),
+.ub-chart-slice:where([data-dim]),
+.ub-chart-key:where([data-dim]),
+.ub-chart-dot:where([data-dim]),
+.ub-chart-value:where([data-dim]),
+.ub-chart-label:where([data-dim]) {
+  opacity: 0.3;
+}
+
+.ub-chart-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+/* The zero line is an axis, not a gridline, and reads as one. */
+.ub-chart-grid:where([data-zero]) {
+  stroke: var(--muted-foreground);
+  opacity: 0.5;
+}
+
+.ub-chart-label {
+  fill: var(--ub-chart-ink);
+  font-size: 9px;
+}
+
+/* currentColor rather than --foreground, for the reason --ub-chart-ink is: these are the
+   numbers written on the chart, and they are the first thing a person recolouring one
+   expects to follow. Full strength, unlike the axis labels — a value is the reading, not
+   the scaffolding around it. */
+.ub-chart-value {
+  fill: currentColor;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.ub-chart-total {
+  fill: currentColor;
+  font-size: 18px;
+  font-weight: 600;
+  dominant-baseline: middle;
+}
+
+/* Only drawn when the chart was actually wired to something, so the cursor and the
+   focus ring are never a promise the page cannot keep. */
+.ub-chart-hit {
+  cursor: pointer;
+}
+
+.ub-chart-hit:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 /* --- Side nav ----------------------------------------------------------------
    A column of links with the current one filled in. The fill is the muted surface
    rather than the primary: a nav marks where you are, and a whole item in the
@@ -1078,7 +1341,7 @@ body {
 .ub-side-nav-title {
   padding: 6px 10px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.75em;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1087,7 +1350,7 @@ body {
 .ub-side-nav-item {
   padding: 7px 10px;
   color: var(--foreground);
-  font-size: 14px;
+  font-size: 0.875em;
   line-height: 1.4;
   text-decoration: none;
   border-radius: var(--radius-md);
@@ -1159,7 +1422,7 @@ body {
 }
 
 .ub-header-name {
-  font-size: 15px;
+  font-size: 0.9375em;
   font-weight: 600;
   letter-spacing: -0.01em;
   white-space: nowrap;
@@ -1174,7 +1437,7 @@ body {
 .ub-header-item {
   padding: 6px 10px;
   color: var(--muted-foreground);
-  font-size: 14px;
+  font-size: 0.875em;
   line-height: 1.4;
   white-space: nowrap;
   text-decoration: none;
@@ -1253,7 +1516,7 @@ body {
 
 .ub-footer-name {
   color: var(--foreground);
-  font-size: 15px;
+  font-size: 1.0714em;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -1290,7 +1553,7 @@ body {
 }
 
 .ub-footer-copyright {
-  font-size: 13px;
+  font-size: 0.9286em;
 }
 
 /* --- Image ------------------------------------------------------------------ */
@@ -1358,7 +1621,7 @@ body {
   border-radius: var(--radius-full);
   background: var(--muted);
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.75em;
   font-weight: 600;
   line-height: 1;
   user-select: none;
@@ -1385,7 +1648,7 @@ body {
 
 .ub-chat-message-author {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.75em;
   font-weight: 500;
   line-height: 1.4;
 }
@@ -1396,7 +1659,7 @@ body {
   color: var(--foreground);
   border: 1px solid transparent;
   border-radius: var(--radius-lg);
-  font-size: 14px;
+  font-size: 0.875em;
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1418,7 +1681,7 @@ body {
   background: transparent;
   color: var(--muted-foreground);
   border-radius: var(--radius-full);
-  font-size: 12px;
+  font-size: 0.75em;
   text-align: center;
 }
 
@@ -1454,7 +1717,7 @@ body {
   border: 0;
   color: var(--foreground);
   font-family: inherit;
-  font-size: 14px;
+  font-size: 0.875em;
   line-height: 1.6;
   resize: none;
 }
@@ -1482,7 +1745,7 @@ body {
 
 .ub-prompt-input-hint {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.75em;
   line-height: 1.4;
 }
 
@@ -1499,7 +1762,7 @@ body {
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 0.8125em;
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
@@ -1616,7 +1879,7 @@ body {
   background: var(--card);
   border-bottom: 1px solid var(--border);
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.75em;
   line-height: 1.4;
 }
 
@@ -1643,7 +1906,7 @@ body {
 .ub-code-block-code {
   color: var(--foreground);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 0.8125em;
   line-height: 1.6;
   white-space: pre;
 }
@@ -1678,7 +1941,7 @@ body {
   gap: var(--space-2);
   padding: 8px 12px;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 0.8125em;
   line-height: 1.4;
   cursor: pointer;
   list-style: none;
@@ -1712,7 +1975,7 @@ body {
 .ub-tool-call-state {
   margin-left: auto;
   color: var(--ub-tool-status);
-  font-size: 12px;
+  font-size: 0.9231em;
 }
 
 .ub-tool-call-body {
@@ -1730,7 +1993,7 @@ body {
 
 .ub-tool-call-label {
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 0.6875em;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1743,7 +2006,7 @@ body {
   border-radius: var(--radius-sm);
   color: var(--foreground);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.75em;
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1790,7 +2053,7 @@ body {
   height: 16px;
   background: var(--background);
   border-radius: var(--radius-full);
-  font-size: 10px;
+  font-size: 0.8333em;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -1832,7 +2095,7 @@ body {
   align-items: center;
   gap: var(--space-2);
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 0.75em;
   line-height: 1.4;
 }
 
@@ -1845,7 +2108,7 @@ body {
   height: 18px;
   background: var(--muted);
   border-radius: var(--radius-full);
-  font-size: 11px;
+  font-size: 0.9167em;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -1857,14 +2120,14 @@ body {
 }
 
 .ub-source-card-title {
-  font-size: 14px;
+  font-size: 0.875em;
   font-weight: 600;
   line-height: 1.4;
 }
 
 .ub-source-card-snippet {
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: 0.8125em;
   line-height: 1.6;
 }
 
@@ -1919,7 +2182,7 @@ body {
   background: var(--ub-alert-accent);
   border-radius: var(--radius-full);
   color: var(--background);
-  font-size: 11px;
+  font-size: 0.6875em;
   font-weight: 700;
   line-height: 1;
 }
@@ -1936,14 +2199,14 @@ body {
 }
 
 .ub-alert-title {
-  font-size: 14px;
+  font-size: 0.875em;
   font-weight: 600;
   line-height: 1.4;
 }
 
 .ub-alert-text {
   color: var(--muted-foreground);
-  font-size: 14px;
+  font-size: 0.875em;
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -1964,7 +2227,7 @@ body {
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-3);
-  font-size: 12px;
+  font-size: 0.75em;
   line-height: 1.4;
 }
 
@@ -2143,7 +2406,7 @@ body {
 
 .ub-modal-title {
   margin: 0;
-  font-size: 18px;
+  font-size: 1.125em;
   font-weight: 600;
   line-height: 1.3;
 }
@@ -2151,7 +2414,7 @@ body {
 .ub-modal-description {
   margin: 0;
   color: var(--muted-foreground);
-  font-size: 14px;
+  font-size: 0.875em;
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -2231,7 +2494,7 @@ body {
 
 .ub-drawer-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 1em;
   font-weight: 600;
   line-height: 1.3;
 }
@@ -2260,7 +2523,7 @@ body {
   border-radius: var(--radius-md);
   color: var(--muted-foreground);
   font-family: inherit;
-  font-size: 18px;
+  font-size: 1.125em;
   line-height: 1;
   cursor: pointer;
   transition:
@@ -2306,7 +2569,7 @@ body {
   color: var(--popover-foreground);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  font-size: 12px;
+  font-size: 0.75em;
   line-height: 1.4;
   white-space: pre-wrap;
   opacity: 0;
@@ -2368,7 +2631,7 @@ body {
   border: 0;
   color: var(--muted-foreground);
   font-family: inherit;
-  font-size: 14px;
+  font-size: 0.875em;
   font-weight: 500;
   line-height: 1.4;
   cursor: pointer;
@@ -2455,7 +2718,7 @@ body {
   gap: var(--space-3);
   padding: 12px 14px;
   color: var(--foreground);
-  font-size: 14px;
+  font-size: 0.875em;
   font-weight: 500;
   line-height: 1.5;
   cursor: pointer;
@@ -2494,7 +2757,7 @@ body {
 .ub-accordion-body {
   padding: 0 14px 14px;
   color: var(--muted-foreground);
-  font-size: 14px;
+  font-size: 0.875em;
   line-height: 1.6;
   white-space: pre-wrap;
 }

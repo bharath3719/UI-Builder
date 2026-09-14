@@ -234,6 +234,10 @@ function resolveValue(value: EmitValue, context: ExpandContext): Value {
             : `${textCode(bound, '', helpers)} === ${stringLiteral(value.equals)}`;
         return { kind: 'code', code: `${on} ? ${stringLiteral(value.on)} : undefined` };
       }
+      // Written as it stands: the component this is handed to takes `unknown` and decides
+      // for itself what arrived, which is the whole point of the form.
+      case 'data':
+        return { kind: 'code', code: bound };
       case 'initials':
         return { kind: 'code', code: initialsCode(textCode(bound, '', helpers), helpers) };
       case 'initial': {
@@ -270,6 +274,10 @@ function resolveValue(value: EmitValue, context: ExpandContext): Value {
         value.equals === undefined ? asBoolean(raw, value.default) : asString(raw) === value.equals;
       return statically(on ? value.on : undefined);
     }
+    // Unbound, "the prop as it stands" is the text that was typed — the same answer
+    // `as: 'string'` gives, and the reason this form needs no static branch of its own.
+    case 'data':
+      return statically(asString(raw));
     case 'initials':
       return statically(initialsOf(asString(raw)));
     case 'initial': {

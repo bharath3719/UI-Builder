@@ -18,6 +18,7 @@ import {
   AppWindow,
   Badge as BadgeIcon,
   Calendar,
+  ChartColumn,
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
@@ -74,6 +75,7 @@ import { Box } from './Box.js';
 import { Breadcrumb } from './Breadcrumb.js';
 import { Button } from './Button.js';
 import { Card } from './Card.js';
+import { Chart } from './Chart.js';
 import { ChatMessage } from './ChatMessage.js';
 import { ChatThread } from './ChatThread.js';
 import { Checkbox } from './Checkbox.js';
@@ -152,6 +154,7 @@ export const COMPONENTS: Record<string, ComponentType<any>> = {
 
   Card,
   Table,
+  Chart,
   Progress,
 
   Image,
@@ -188,6 +191,7 @@ export const ICONS: Record<string, LucideIcon> = {
   AppWindow,
   Badge: BadgeIcon,
   Calendar,
+  ChartColumn,
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,

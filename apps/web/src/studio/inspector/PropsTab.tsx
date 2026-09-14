@@ -21,6 +21,7 @@ import { scopeSuggestions } from '../expressions/scope.js';
 import { useStudio } from '../state/context.js';
 import {
   ColorControl,
+  PaletteControl,
   Row,
   SelectControl,
   TextAreaControl,
@@ -81,7 +82,10 @@ function PropField({ node, spec }: { node: Node; spec: PropSpec }) {
       htmlFor={id}
       overridden={overridden}
       onReset={reset}
-      wide={spec.type === 'text' || bound}
+      // A palette is wide for a different reason than a textarea is: six wells and an add
+      // button do not fit the right-hand column, and wrapping them inside it would stack
+      // the cycle into two short rows that no longer read as an order.
+      wide={spec.type === 'text' || spec.type === 'data' || spec.type === 'palette' || bound}
       bind={{
         bound,
         onToggle: () => {
@@ -162,9 +166,29 @@ function PropField({ node, spec }: { node: Node; spec: PropSpec }) {
     );
   }
 
-  // 'text' is the multi-line string — a paragraph of copy, or the list of choices a
-  // Select is authored with. It gets a full-width row; a label does not need one.
-  if (spec.type === 'text') {
+  // A palette is several colours, and the control shows the component's own list behind
+  // whatever has been named — which is why the defaults come off the spec rather than
+  // out of this file. A disagreeing selection shows the plain unset row instead of one
+  // member's colours, for the reason every other field here shows nothing: a row of
+  // swatches holding one node's palette invites a click that would overwrite the rest.
+  if (spec.type === 'palette') {
+    return row(
+      <PaletteControl
+        id={id}
+        label={spec.label}
+        value={mixed ? '' : text}
+        swatches={spec.swatches ?? []}
+        tokens={Object.entries(theme.colors)}
+        onCommit={commit}
+      />,
+    );
+  }
+
+  // 'text' is the multi-line string — a paragraph of copy — and 'data' is the multi-line
+  // *series*, the rows or choices or numbers a component parses. They are authored the
+  // same way and differ only in what a binding is coerced to (`coerceToProp`), so they
+  // share a control. Both get a full-width row; a label does not need one.
+  if (spec.type === 'text' || spec.type === 'data') {
     return row(
       <TextAreaControl id={id} value={text} placeholder={placeholder} onCommit={commit} />,
     );

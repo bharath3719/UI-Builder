@@ -343,7 +343,7 @@ Shipped components are in **bold**.
 | **Basic**   | **`Text`**, **`RichText`**, **`Heading`**, **`Button`**, **`Link`**, `Icon`, **`Badge`**, **`Avatar`**, **`Alert`**                                       |
 | **Form**    | **`Input`**, **`Textarea`**, **`Select`**, **`Checkbox`**, **`Radio`**, **`Switch`**, **`Slider`**, **`DatePicker`**, `Form`                              |
 | **Media**   | **`Image`**                                                                                                                                               |
-| **Data**    | `List` (repeat), **`Table`**, **`Card`**, **`Progress`**                                                                                                  |
+| **Data**    | `List` (repeat), **`Table`**, **`Chart`**, **`Card`**, **`Progress`**                                                                                     |
 | **AI**      | **`ChatThread`**, **`ChatMessage`**, **`PromptInput`**, **`TypingIndicator`**, **`CodeBlock`**, **`ToolCall`**, **`Citation`**, **`SourceCard`**          |
 | **Overlay** | **`Modal`**, **`Drawer`**, **`Tabs`**, **`Accordion`**, **`Tooltip`**                                                                                     |
 
@@ -569,6 +569,48 @@ shows an "overridden" dot with a reset action.
 **Props** — auto-generated from `ComponentSpec.props`. Nothing hand-written per component.
 
 **Interactions** — event → action list editor (Phase 11).
+
+#### Why a Typography field used to do nothing
+
+Reported as "I change the font size on a chart and nothing happens", and true of sixteen
+components rather than one. It is worth writing down because the cause is not the one the
+symptom suggests, and the one-class rule was not broken.
+
+The Design tab writes onto `.ub-n-<id>`, which is the component's **root**. An inheritable
+property reaches the text inside by inheritance — and inheritance is not a weak
+declaration that loses a specificity contest, it is the absence of one. Any rule that
+names the property on a descendant wins outright, however low its specificity. So
+`.ub-table-header { font-size: 12px }` never entered the contest the `:where()` invariant
+was built to win, and the field silently did nothing on every component that draws its own
+text from a prop — which is exactly the set where the Design tab is the _only_ way to
+style that text, because there is no inner node to select instead.
+
+An audit found **171 such declarations across ~16 components**, so the fix had to be one
+rule rather than sixteen judgements:
+
+- **A root may size itself in pixels; anything inside one is in `em`.** Each ratio is the
+  pixel value it already was, against the parent it actually has — `.ub-tool-call-state`
+  is inside `.ub-tool-call-summary`, so it is 12/13, not 12/16. That property is what made
+  the change safe to make in bulk: every element still computes to the pixel size it had,
+  so nothing moves until someone sets Size. Verified in the browser across 36 converted
+  elements, then by setting a Table to 28px and watching its header land on 24 — the 12/14
+  it always was.
+- **Colour that is deliberately quiet derives from `currentColor`** rather than naming
+  `--muted-foreground` outright, so it keeps the de-emphasis _and_ follows the field.
+
+**The exception, and why it is declared rather than inferred.** A chart draws its labels
+inside a `viewBox`, where a length is in user units: `font-size: 16` there is sixteen
+one-hundred-and-eightieths of the chart's height. No stylesheet can fix that, and a field
+that accepts a number and means something else by it is worse than an absent one. So
+`ComponentSpec.unsupportedStyles` names the properties, and the Design tab hides those
+rows — the same move `layout` already makes for the flex rows, pointed the other way: one
+opens rows the document cannot know are wanted, the other closes rows the node would
+accept and then ignore.
+
+The bar for adding a key there is deliberately high and is written into the type's doc
+comment: _no declaration could make this work_, not _this is awkward to make work_. A
+component whose own stylesheet out-declares the inspector is a bug in `css.ts`, and the
+descendant rule should become relative instead.
 
 ---
 
@@ -1979,9 +2021,329 @@ asserting otherwise cost an hour.
   than a transform.
 - **Rotating a token** invalidates nothing in a running studio: `useIntegrationCatalog`
   re-fetches on a connection-list change, and `hasSecret` does not change on a rotation, so
-  a session holds the old value until it reloads.
+  a session holds the old value until it reloads. Still true for the four schemes whose
+  credential is pasted in; closed for `oauth2`, which is the only one that knows when its
+  credential dies. See "Power BI" below.
 - **Pagination.** `resultPath` finds the rows; nothing yet carries a cursor back into the
   next request. It wants a `runQuery` step that can pass arguments.
+
+#### Power BI ✅ done
+
+A page query can be a DAX statement against a Power BI semantic model. It is the third
+`QueryDef.source` kind and the first one that is not an HTTP request somebody described —
+the URL, the body and the shape of the answer are all the protocol's.
+
+**Not an endpoint, deliberately.** A REST integration is a call defined once in workspace
+settings that a page then picks from a list. A Power BI query is written on the page,
+because the DAX _is_ the query: there is no useful "define it once for the team" level
+between a dataset and a statement, and inventing one would mean a settings screen visited
+once per chart. The connection is still pointed at, and supplies exactly two things — the
+base URL and the credential. Everything about _which data_ lives on the query.
+
+Additive, so **no migration and no schema bump**: `QuerySource` grew a union arm, and no
+stored document can contain one. The same argument the overlay actions made in §10.
+
+**D15: the client-credentials exchange happens on the server.** This is the one place D14
+is not followed, and the distinction is the point. Every other scheme stores a credential
+that _gets sent_; this one stores a client secret that gets **traded** — and a client
+secret authenticates the whole application, for everything it can reach, until somebody
+rotates it. Handing that to a browser would not be D14, which was a decision about a
+_token_; it would be a much larger decision wearing D14's clothes. So the trade is in
+`apps/api/src/lib/oauth.ts`, and what reaches the browser is a minted access token that
+expires on its own — strictly **less** than what the same role already gets from a `bearer`
+connection. Azure AD agrees: its v2 token endpoint refuses `client_credentials` from a
+request carrying a browser `Origin`.
+
+There is no refresh token, on purpose. Client credentials has no user to act for, so
+"refresh" is just minting another one, and a stored refresh token would be a second
+long-lived credential to protect for nothing.
+
+**The token cache** is one entry per connection, in process, holding a fingerprint of the
+configuration it was minted for — the secret included, hashed rather than kept — so
+rotating a secret invalidates it with nothing having to remember to. One in-flight promise
+per connection means N simultaneous callers make one request. In memory rather than in the
+database because it caches something re-derivable: persisting it would mean writing a
+credential to disk to save a round trip.
+
+That is what closes half the rotation gap above. `ApiIntegrationSecret` grew `expiresAt`,
+null for every scheme that cannot know, and the studio schedules a re-fetch a minute before
+the soonest one — so a dashboard left open no longer starts failing an hour in. The renewal
+is deliberately not part of the catalogue's `for` key: gating on it would empty the
+catalogue for a round trip and every integration query on the canvas would report having no
+connection, once an hour, for no reason.
+
+**The one place a response is reshaped.** `executeQueries` does not answer with rows; it
+answers with `{ results: [{ tables: [{ rows }] }] }`, and every column is named the way DAX
+names things — `Sales[Region]`, `[Total]`. Both facts are the protocol's rather than an
+author's: `resultPath` exists to point through an envelope somebody _chose_, and nobody
+chose this one. So `powerbiRows` unwraps it and strips the qualifier, and a Power BI
+query's `data` is the rows. It is total by construction — anything unexpected reads as no
+rows rather than an error, because a DAX statement returning nothing is ordinary, and a
+query that actually failed says so with a status. Two columns that would claim the same
+short name keep their qualified ones, since dropping one would plot a column nobody asked
+for and picking a winner would make _which_ depend on key order.
+
+`schema/powerbi.ts` is therefore **written twice** — the second copy is shipped into the
+export as `src/lib/powerbi.ts`, for D6's reason and by D6's method: a test pins the two
+bodies together from the first export down. It is the same arrangement `values.ts` already
+uses, and it carries the same constraint — no backtick and no `${` in the module, because
+the other copy lives inside a template literal.
+
+**The export has no server**, so it cannot do the trade. It reads a bearer token from
+`import.meta.env.VITE_<SLUG>_TOKEN` like every other connection, and `.env.example` says
+so. Putting a client secret in a browser bundle so the export could mint its own would hand
+every visitor a credential for the whole application — the exact thing D15 exists to avoid.
+A deployment wanting refreshed tokens puts something in front of it, which is the same
+shape of answer as every other secret in an export. The URL is emitted as a literal when
+the dataset and workspace are literals — which is nearly always, and is the readable form —
+and falls back to concatenation with `encodeURIComponent` at the seams only when one is
+bound, applying the encoding the canvas applies so the two cannot disagree.
+
+##### Verified
+
+Typecheck, lint, and — with the charts below — 1001 tests across the five suites the root
+runner has switched off (schema 307, api 226, components 201, codegen 183, runtime 84), the
+API suite covering the exchange, the cache, the fingerprint and the 503 a refused client
+secret becomes.
+
+The export was put through all three checks, which is what `--doc powerbi` was added to
+`scripts/emit.mts` for. It **compiles** (`tsc --noEmit` under `strict` in the emitted
+project) and it **works**: served from `dist` against a mocked `executeQueries`, one POST to
+the right URL with the DAX in the right envelope, `Sales[Region]` and `[Total]` arriving as
+`Region` and `Total`, a repeat and a table both rendering them, the second query firing only
+on its button with page state interpolated into its DAX, and no console errors.
+
+**Two bugs fell out of that third check, and neither was visible to a snapshot.** A query's
+_request_ can read names the markup never mentions — `state` in a URL hole or a DAX filter,
+another query's result in a URL — and `generatePage` decided whether to declare `state` and
+`queries` by scanning only the markup. Both emitted a page referencing a name it never
+declared: stable bytes that are not valid TypeScript. The fix is an ordering — the query
+block is now generated before the state declaration although it is still written after it —
+and the second half of it was **pre-existing**, reachable since Phase 11 by any page whose
+only reader of a query was another query. Three tests in `page.test.ts` hold both.
+
+#### Charts and cross-filtering ✅ done
+
+The two halves of what a page made of numbers actually needs: something to draw them, and
+a way for a click on the drawing to change what the page is asking for.
+
+**The `Chart` component** is filed under `Data` beside `Table` rather than in a `dataviz`
+category of its own, because a chart is a rendering of rows and the palette already has the
+group that means that. **One palette entry, nine shapes**, chosen from a `Shape` dropdown:
+bars, stacked bars, 100% stacked bars, a line, an area, stacked areas, bars with a line over
+them, a pie and a donut — with a `horizontal` flag that lays the bar family on its side.
+That covers Power BI's whole bar/column/line/area/pie family, clustered and stacked and
+either way up, which is fifteen entries in its visual gallery.
+
+Orientation is a **flag rather than five more kinds** for the reason the dropdown exists:
+horizontal bars are the same chart lying down, so they are a property of the drawing rather
+than a different drawing, and folding them in would double every bar entry in a list a
+person has to read. It applies to the bar family alone — a line read bottom-to-top is a line
+whose reader has to turn the page.
+
+It is the library's **third runtime module**, and the first that is not a wrapper. The rule
+`EmitModule` states is that a module wraps markup a template already wrote and only adds
+behaviour, which is what keeps D6 for `SortableRows` and `Overlay`: same elements, same
+template, behaviour written twice. A chart cannot obey it, and not because the rule is
+inconvenient — **a chart's markup _is_ its data.** Five rows are five rects at coordinates
+nothing knows until the query answers, so there is no markup for a wrapper to wrap and no
+template that could have described it. The other named transforms (`options`, `tableRows`)
+expand a shape that is known while _generating_; this one is known only while running.
+
+So D6 is kept the other way this repo already keeps it, for `values.ts` and `powerbi.ts`:
+one component written twice and pinned body-for-body by `runtime.test.ts`. That is the
+stronger of the two promises, not a weaker one — the canvas and the export do not merely
+render the same elements, they run the same code. The bar for a fourth module is that it can
+say the same thing about its own shape.
+
+Nothing about the drawing is measured: it is an SVG viewBox scaled by CSS, so there is no
+`ResizeObserver` and nothing that has to wait for the canvas iframe to paint — the legend
+is laid out by counting characters for the same reason. The palette is six custom properties
+in `css.ts` rather than colours in the component, so a theme reaches them and a node rule can
+override them.
+
+**Colour encodes the series on a cartesian chart and the category on a round one**, and the
+difference is not a style choice. A bar chart's category axis already names every bar, so
+colouring by category would say a second time what the axis says once and leave nothing for
+the dimming to mean; a single-series chart is therefore one colour, the theme's own primary,
+without anything being chosen. Parts of a whole have no axis, so there the marks genuinely
+have nothing else telling them apart.
+
+**Naming the colours** is a `palette` prop, and it is the first prop in the library whose
+value is a _list_. That is the whole of why it is a type rather than a `color` with a flag:
+a Design tab field writes one declaration onto one node, and a rule could certainly set six
+custom properties, but it could not say "these two, and the rest as the theme had them" —
+which is what naming one colour has to mean, since the alternative is that touching one
+series flattens the chart to a single colour. So a named list replaces the **front** of the
+component's own and leaves the tail alone, and a list longer than six lengthens the cycle,
+because the seventh slot has no rule in the stylesheet and would otherwise wrap back to the
+first colour while the author was still naming new ones.
+
+It is held as one comma-separated string, so the document, a binding and the emitted
+attribute all stay the string-valued prop they already were; `splitPalette` splits on the
+commas _between_ colours rather than the ones inside them, so `rgb(37, 99, 235)` is one
+colour and `var(--brand, #eee)` survives. That function is written twice for D6's reason and
+by D6's method — the chart's copy ships into an export and can import nothing from here, and
+`Chart.test.ts` pins the two together.
+
+The control is what makes it a row of swatches, and it shows the **whole** cycle rather than
+only what has been named: a row that stopped at the named colours would hide the ones the
+chart is actually drawing with, and the author would be choosing the second colour without
+being able to see the first. Named slots are solid and open a picker; the rest are dashed
+previews of the component's own list, which arrives through `PropSpec.swatches` rather than
+the Props tab importing a chart's palette — that tab is generated from the registry and holds
+no per-component code (D7), and these colours are the component's own defaults, so anywhere
+else would be a second copy to keep in step with the stylesheet. That leaves the two gestures
+as exact inverses, which is the whole of the interaction: clicking a preview **extends** the
+named list to there, and clearing a well **shortens** it to before there. Neither can leave a
+hole, because a hole is not something a comma-separated value could hold.
+
+**A bug this surfaced in a control that had nothing to do with charts.** A swatch painted its
+fill with the value it holds, and a value picked from the theme is `var(--primary)` — a token
+of the **design's** theme, which is a different document from the studio chrome the inspector
+is drawn in. The custom property does not exist in that realm, so the swatch painted nothing
+and reported a colour as missing when it was only defined elsewhere. Every colour field in
+the Design tab had it. `paintable` resolves a `var()` against the token list already passed in
+beside the value, for display only — what a field commits is still the `var()`, which is the
+entire point of picking a token rather than the colour behind it.
+
+**Many series.** Three things fall out of a chart that draws more than one, and each is one
+place in the code rather than one per shape:
+
+- **Both shapes a query answers in.** Power BI has two field wells and so does this: several
+  named `Value fields` is one column per series (`Jan | North | South`), and one `Series
+field` is one column whose _contents_ are the series (`Jan | North | 10`), which is what
+  `SUMMARIZECOLUMNS` gives when it is handed two columns and a measure. With neither named,
+  **every numeric column is a series** and the first column that is not one is the axis — so
+  a two-measure DAX result draws both halves before anything has been configured, which is
+  the same argument the single-series auto-detect was already making.
+- **Every series holds every category**, missing ones as zero. A stack needs the segment
+  below it and a cluster the slot beside it, and neither can be found by index if two series
+  disagree about how many points they have. Pivoting a series field _is_ grouping by
+  category, so rows landing in one slot are **added up** — which is also the right answer for
+  a result that was not fully grouped.
+- **One `from` and one `to` per mark.** Clustered, stacked and 100% stacked differ only in
+  what spans the value axis, so `spansOf` is the whole of the difference and every renderer
+  below it draws a span without knowing which of the three it is drawing. That is why turning
+  the bars sideways did not have to be written again for each of them, and why negatives
+  stack _downward_ from zero — the one reading under which the segments still sum to the bar.
+
+There is **one value axis**, including for the combo chart. A second one can be scaled to put
+any line above any bar, which is a way to draw a relationship that is not in the numbers.
+
+**The cross-filter** is `onSelect` plus one new action step, and deliberately little else.
+The `PowerBiQuerySource` comment predicted the shape and was right: because `dax` is
+template source in page scope, writing a value into state re-runs every query reading it,
+so clicking a bar needs no query machinery — only somewhere for the click to put the value.
+
+Three things had to be built for that "only".
+
+- **An event that carries a value.** `onSelect` is called with the mark, not with a
+  `MouseEvent`, so `{{ event.label }}` is a handler someone can write. That is correct on
+  the canvas for free — `event` is whatever the component passed — and would **not compile**
+  in the export, where the generator types a handler's parameter from the element it landed
+  on. `ComponentSpec.eventPayloads` is how the registry says what it passes (D7), written as
+  a structural type so the generated page imports nothing.
+- **A prop that is not narrowed.** `as: 'data'` in a template and `type: 'data'` in a prop
+  spec are the same decision on the two sides of D6: the component takes `unknown` and
+  decides for itself whether it got an array or the text somebody typed. This turned out to
+  be a **pre-existing bug**, not a new requirement — `coerceToProp` was JSON-encoding any
+  array bound to a `text` prop, so a `Table` or a `Select` bound to a query rendered as its
+  own payload on the canvas and correctly in the export. `Table.rows`, `Select.options` and
+  `Radio.options` moved to `type: 'data'` with the chart.
+- **`setFilter`**, the step whose second application is a clear. Additive, so **no migration
+  and no schema bump**, on the same argument `openOverlay` and the Power BI source arm made.
+  It is `setState` except that writing what the variable already holds clears it, which is
+  what makes a filter undoable by clicking the same mark again — the alternative being
+  `{{ state.region === event.label ? '' : event.label }}` re-written in every handler on
+  every chart, naming the variable twice. Clearing is the empty string whatever the
+  variable's declared type, because a category is text and `""` is what a query's own text
+  tests for. Like `toggleState` it compares against **what the store holds**, not what the
+  render closed over, so two filter steps in one handler both land.
+
+The chart is handed the category back as `selected` and dims everything that is not it.
+That is not decoration: a click that filters the page and leaves the chart looking exactly
+as it did is a click the reader cannot tell landed, or tell how to undo.
+
+**The one thing that could not be kept, and is said out loud instead.** A step cannot see a
+write made beside it — §10 says so, and the generated handler is the same because
+`queries.x.run()` sends the request _this_ render built. So filtering and then running a
+query sends the **previous** filter: the page fetches, the page updates, and the numbers are
+one click stale. The remedy is to delete the step, since a query that runs on load re-sends
+itself whenever its request changes, which is the whole reason a filter bar needs no wiring.
+`staleQueryWarnings` in `walk.ts` says that at export time. It fires on `setFilter` only,
+and not on `setState`: there the author's own value is being written and the ordering can be
+compensated for in the request — `{{ state.count + 1 }}` reads the stale variable on purpose
+— so a check that could not tell those apart would fire on correct pages. Fixing it properly
+means a `run` that takes its request as an argument, which is the same feature pagination is
+waiting on.
+
+##### Verified
+
+The three checks again, with `--doc powerbi` grown a bar chart bound to the DAX result and a
+donut drawn from a typed-out series — which is both halves of `as: 'data'` in one fixture.
+It **compiles** under `strict`, and it **works**: clicking a bar sends DAX filtered on that
+bar, clicking it again sends DAX filtered on nothing, Enter on a focused mark does what a
+click does, the dimming follows all three, and there are no console errors.
+
+A third bug fell out, in the printer rather than the generator: a JSX attribute string
+carrying a raw **newline** — which no prop could hold in an attribute until a chart's series
+could — is legal JSX whose meaning is the transform's to decide, and walks the rest of the
+element out of the printer's indentation. `attrText` now writes those as expressions, which
+is the answer it already gave for a double quote.
+
+Then again for the many-series pass, with `--doc powerbi` grown a **third** chart: a stacked,
+horizontal one bound to a two-column grouping through `seriesField`. It is the only fixture
+that reaches those emit forms, and it is what says a boolean attribute written bare is still
+omitted when it is false. The export **compiles** under `strict` and **builds**.
+
+Two checks that a test could not make, and a browser could. `Chart.test.ts` gained a sweep
+over **all nine shapes in both orientations** asserting no coordinate is `NaN` and none lands
+outside the viewBox — the way a chart fails is a mark at an impossible coordinate, which
+throws nothing and which no assertion about _what_ it drew would notice. But rendering the
+whole gallery against the exported stylesheets found two things the sweep could not, because
+both were legal geometry:
+
+- **Stacked segments stepped sideways instead of stacking.** The cluster's lane offset was
+  being applied in every mode; only a cluster moves its series across the band, and a stack
+  separates them along the value axis instead. That _is_ the difference between the two, and
+  it had been written in one place and then undone in another.
+- **A combo chart drew its line under its own bars**, so the line showed only in the gaps.
+  Marks are now ordered areas, bars, lines, dots.
+
+A third was a contrast problem rather than a bug: a stacked chart is the only one whose
+numbers sit _on_ a mark, and a fill that reads on the page vanished on the dark series. The
+labels keep the page's ink and carry its background as a halo (`paint-order: stroke`), which
+is the one treatment that works on all six colours.
+
+Then again for the palette control, which is a studio gesture rather than a drawing and so
+was driven in the real app: insert a `Chart`, and the Colours row is six wells and an add
+button rather than the text box a prop type with no branch falls through to. Clicking the
+third preview names exactly the first three and leaves the cycle six long, the named colour
+reaches the canvas as an inline `--ub-chart-mark` on every mark, the add button names the
+next one, and clearing the second well shortens the list to one — the inverse of the gesture
+that extended it. The picker's clear action reads "Theme from here" there and "Clear" in a
+lone colour field, which is the same empty string saying the two different things it means.
+
+That run is also what caught the `var(--primary)` swatch above, and caught it the way only a
+browser could: the value was correct in the document, correct on the canvas, and correct in
+every assertion a test would think to make about it. It was only _invisible_, in a realm the
+unit tests do not render.
+
+##### What is left
+
+- **The rest of the Power BI gallery.** Scatter and bubble, treemap, funnel, waterfall and
+  ribbon are further `kind`s over the same series model and the same `onSelect`. `KPI`,
+  `Gauge` and `Matrix` are not — they are components of their own, because none of them is a
+  category axis against a value axis.
+- **A second value axis** for the combo chart, deliberately not built; see above.
+- **Dataset and workspace pickers.** Both ids are typed in. Power BI can list them, and a
+  `groups`/`datasets` lookup would make the panel a pair of dropdowns rather than two GUIDs
+  someone pastes.
+- **My workspace.** `groupId` is optional and omitting it produces the personal-workspace
+  URL, but a service principal cannot use it — so the connection kind this shipped with is
+  exactly the one for which that branch is unreachable. It is there for a future
+  user-delegated auth scheme rather than for today.
 
 ---
 

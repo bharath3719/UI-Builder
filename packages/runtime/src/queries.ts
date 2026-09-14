@@ -13,6 +13,7 @@
  */
 
 import {
+  adaptQueryData,
   buildQueryRequest,
   cyclicQueries,
   type EvaluateExpression,
@@ -20,6 +21,7 @@ import {
   type IntegrationCatalog,
   type Json,
   type QueryDef,
+  type QueryShape,
   type QueryState,
   type RenderScope,
 } from '@ui-builder/schema';
@@ -41,6 +43,13 @@ export interface QueryRequest {
    * URL query, which has nowhere to record it — the binding says it instead.
    */
   resultPath: string;
+  /**
+   * What has to happen to the response before a binding sees it — `raw` for everything a
+   * person wrote, `powerbi` for the one protocol whose envelope is unwrapped. Part of the
+   * request rather than looked up from the query, so this hook never has to know what a
+   * Power BI query is.
+   */
+  shape: QueryShape;
   /**
    * Everything the fetch depends on, as one string. The auto-run effect compares this
    * against what it last sent, so it re-fetches when the *request* changed rather than
@@ -70,12 +79,18 @@ export function buildRequest(
       headers: {},
       body: undefined,
       resultPath: '',
+      shape: 'raw',
       error: built.error,
       key: `error:${built.error}`,
     };
   }
 
-  const request = { id: query.id, ...built.request, resultPath: built.resultPath };
+  const request = {
+    id: query.id,
+    ...built.request,
+    resultPath: built.resultPath,
+    shape: built.shape,
+  };
 
   return { ...request, key: JSON.stringify(request) };
 }
@@ -203,8 +218,12 @@ export function usePageQueries(
           signal: controller.signal,
         });
 
-        const data = await readBody(response);
+        const body = await readBody(response);
         if (controller.signal.aborted) return;
+
+        // Only a successful response is reshaped. A failure body is an error envelope, and
+        // running a row adapter over one would turn "400, your DAX is wrong" into no rows.
+        const data = response.ok ? adaptQueryData(request.shape, body) : body;
 
         setResults((current) => ({
           ...current,

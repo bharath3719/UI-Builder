@@ -15,6 +15,7 @@ import workspaceRoutes from './modules/workspaces/routes.js';
 import authPlugin from './plugins/auth.js';
 import errorsPlugin from './plugins/errors.js';
 import prismaPlugin from './plugins/prisma.js';
+import rateLimitPlugin from './plugins/rateLimit.js';
 import storagePlugin from './plugins/storage.js';
 
 /**
@@ -23,6 +24,18 @@ import storagePlugin from './plugins/storage.js';
  */
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
+    /*
+     * Every request in production arrives through Caddy (deploy/Caddyfile), so the socket's
+     * peer is the docker bridge and `X-Forwarded-For` is the only thing that knows who
+     * actually called. Without this the whole internet shares one address: the log
+     * attributes every request to 172.x, and the rate limiter below puts every caller in
+     * one bucket, where the first attacker locks out every real user.
+     *
+     * Safe because nothing reaches this port except the proxy — compose publishes 80 and
+     * 443 on `web` and no port at all on `api`, so a client cannot forge the header without
+     * already being inside the compose network.
+     */
+    trustProxy: true,
     logger: {
       level: env.LOG_LEVEL,
       ...(isProduction
@@ -59,6 +72,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     limits: { fileSize: ASSET_MAX_BYTES, files: 1, fields: 4 },
   });
   await app.register(errorsPlugin);
+  // Before the routes, so the per-route limits in `auth/routes.ts` have something to
+  // configure — and after `errorsPlugin`, so a 429 uses the same envelope as every other
+  // refusal.
+  await app.register(rateLimitPlugin);
   await app.register(prismaPlugin);
   await app.register(storagePlugin);
   await app.register(authPlugin);

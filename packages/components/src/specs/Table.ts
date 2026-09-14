@@ -33,9 +33,13 @@ export const TableSpec: ComponentSpec = {
   props: [
     { name: 'columns', label: 'Columns', type: 'string', placeholder: 'Name | Role | Status' },
     {
+      // `data` rather than `text`: bound to a query this holds the rows themselves, and
+      // `coerceToProp` narrowing a `text` prop would hand `buildTable` the JSON of the
+      // array instead of the array — a table that reads as its own payload on the canvas
+      // and as a table in the export.
       name: 'rows',
       label: 'Rows',
-      type: 'text',
+      type: 'data',
       placeholder: 'One row per line, cells split by |',
     },
     /*

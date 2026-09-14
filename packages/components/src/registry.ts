@@ -33,6 +33,7 @@ import { BoxSpec } from './specs/Box.js';
 import { BreadcrumbSpec } from './specs/Breadcrumb.js';
 import { ButtonSpec } from './specs/Button.js';
 import { CardSpec } from './specs/Card.js';
+import { ChartSpec } from './specs/Chart.js';
 import { ChatMessageSpec } from './specs/ChatMessage.js';
 import { ChatThreadSpec } from './specs/ChatThread.js';
 import { CheckboxSpec } from './specs/Checkbox.js';
@@ -115,6 +116,9 @@ export const SPECS: readonly ComponentSpec[] = [
   // a table, and the palette reads in the order a page gets built.
   CardSpec,
   TableSpec,
+  // After the table, because the table is how you find out what came back and the chart
+  // is what you draw once you know.
+  ChartSpec,
   ProgressSpec,
 
   ImageSpec,

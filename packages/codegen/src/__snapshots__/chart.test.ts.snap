@@ -1,0 +1,135 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the Power BI project > is this page 1`] = `
+"import { useState } from 'react';
+import { cell, list, text, truthy } from '../lib/values';
+import { useQuery } from '../lib/query';
+import { powerbiRows } from '../lib/powerbi';
+import { Chart } from '../components/Chart';
+
+import styles from './Home.module.css';
+
+const CONTOSO_BI_TOKEN = import.meta.env.VITE_CONTOSO_BI_TOKEN ?? '';
+
+export function Home() {
+  const [state, setState] = useState<Record<string, any>>({ dataset: '', region: 'North' });
+
+  const queries = {
+    sales: useQuery({
+      method: 'POST',
+      url: 'https://api.powerbi.com/v1.0/myorg/groups/11112222-3333-4444-5555-666677778888/datasets/e1f2a3b4-0000-4000-8000-abcdefabcdef/executeQueries',
+      headers: { 'Content-Type': 'application/json', Authorization: \`Bearer \${CONTOSO_BI_TOKEN}\` },
+      body: '{"queries":[{"query":"EVALUATE SUMMARIZECOLUMNS(Sales[Region], \\\\"Total\\\\", SUM(Sales[Amount]))"}],"serializerSettings":{"includeNulls":true}}',
+      runOnLoad: true,
+      adapt: powerbiRows,
+    }),
+    detail: useQuery({
+      method: 'POST',
+      url: 'https://api.powerbi.com/v1.0/myorg' + '/datasets/' + encodeURIComponent(text(state.dataset)) + '/executeQueries',
+      headers: { 'Content-Type': 'application/json', Authorization: \`Bearer \${CONTOSO_BI_TOKEN}\` },
+      body: JSON.stringify({ queries: [{ query: \`EVALUATE FILTER(Sales, Sales[Region] = "\${text(state.region)}")\` }], serializerSettings: { includeNulls: true } }),
+      runOnLoad: true,
+      adapt: powerbiRows,
+    }),
+    trend: useQuery({
+      method: 'POST',
+      url: 'https://api.powerbi.com/v1.0/myorg/datasets/e1f2a3b4-0000-4000-8000-abcdefabcdef/executeQueries',
+      headers: { 'Content-Type': 'application/json', Authorization: \`Bearer \${CONTOSO_BI_TOKEN}\` },
+      body: '{"queries":[{"query":"EVALUATE SUMMARIZECOLUMNS(Sales[Month], Sales[Region], \\\\"Total\\\\", SUM(Sales[Amount]))"}],"serializerSettings":{"includeNulls":true}}',
+      runOnLoad: true,
+      adapt: powerbiRows,
+    }),
+  };
+
+  const onByRegionSelect = (event: { label: string; value: number; index: number; series: string; seriesIndex: number; row: Record<string, unknown> | null }) => {
+    setState((current) => {
+      const picked = text(event.label);
+      return { ...current, region: text(current.region) === picked ? '' : picked };
+    });
+  };
+
+  const onLoadDetailClick = async () => {
+    await queries.detail.run();
+  };
+
+  return (
+    <div
+      className={\`ub-stack \${styles['ub-n-root']}\`}
+      data-direction="vertical"
+      data-gap="4"
+      data-align="stretch"
+      data-justify="start"
+    >
+      <h1 className="ub-heading" data-level="1">Sales</h1>
+      {truthy(!queries.sales.data) && (
+        <p className="ub-text" data-size="base" data-tone="muted">No rows.</p>
+      )}
+      <Chart
+        kind="bar"
+        data={queries.sales.data}
+        labelField="Region"
+        valueField="Total"
+        selected={text(state.region)}
+        showGrid
+        onSelect={onByRegionSelect}
+      />
+      <Chart
+        kind="stacked"
+        data={queries.trend.data}
+        labelField="Month"
+        valueField="Total"
+        seriesField="Region"
+        horizontal
+        selected={text(state.region)}
+        showGrid
+        showLegend
+      />
+      <Chart
+        kind="donut"
+        data={'Direct | 42\\nPartner | 31\\nOnline | 27'}
+        selected=""
+        showValues
+        showLegend
+      />
+      {list(queries.sales.data).map((item, index) => (
+        <div key={index} className="ub-card">
+          <p className="ub-text" data-size="base" data-tone="default">
+            {text(item.Region, 'Text')}
+          </p>
+        </div>
+      ))}
+      <table className="ub-table">
+        <thead className="ub-table-head">
+          <tr className="ub-table-row">
+            <th className="ub-table-header" scope="col">Region</th>
+            <th className="ub-table-header" scope="col">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list(queries.sales.data).length === 0 && (
+            <tr className="ub-table-row">
+              <td className="ub-table-empty" colSpan={2}>No rows.</td>
+            </tr>
+          )}
+          {list(queries.sales.data).map((row, index) => (
+            <tr key={index} className="ub-table-row">
+              <td className="ub-table-cell">{cell(row, 'Region')}</td>
+              <td className="ub-table-cell">{cell(row, 'Total')}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button
+        className="ub-button"
+        type="button"
+        data-variant="default"
+        data-size="default"
+        onClick={onLoadDetailClick}
+      >
+        Load detail
+      </button>
+    </div>
+  );
+}
+"
+`;

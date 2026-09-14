@@ -29,9 +29,15 @@ import {
   type Theme,
 } from '@ui-builder/schema';
 import { element, printJsx, stringLiteral, type JsxNode } from './ir.js';
-import { resolveIntegrationRequest, type ExportIntegrations } from './integrations.js';
+import {
+  POWERBI_ADAPTER,
+  resolveIntegrationRequest,
+  resolvePowerBiRequest,
+  type ExportIntegrations,
+} from './integrations.js';
 import {
   NAVIGATE_MODULE,
+  POWERBI_MODULE,
   QUERY_MODULE,
   TOAST_MODULE,
   VALUES_MODULE,
@@ -124,11 +130,17 @@ function stateDeclaration(page: Page, body: string): string | null {
 /**
  * A query's request, flattened to the fields `useQuery` takes.
  *
- * Both source kinds collapse to the same shape here, which is the point: an integration
- * query has had its connection folded in and its two template layers composed into one
- * (`resolveIntegrationRequest`), so from this line down there is no such thing as an
- * integration — only a method, a URL and some headers, exactly like a query someone typed
- * out by hand. The export therefore contains no integration machinery at all.
+ * All three source kinds collapse to the same shape here, which is the point: an
+ * integration query has had its connection folded in and its two template layers composed
+ * into one (`resolveIntegrationRequest`), and a Power BI query has had its URL and its DAX
+ * envelope assembled (`resolvePowerBiRequest`) — so from this line down there is no such
+ * thing as a connection, only a method, a URL and some headers, exactly like a query
+ * someone typed out by hand. The export therefore contains no integration machinery at all.
+ *
+ * The exception is `adapt`, and it is an honest one: a Power BI response has to be
+ * unwrapped, that cannot happen at generation time because the response does not exist
+ * yet, and so one function travels with the request. It is a named import from a generated
+ * file, not a lookup in a catalogue.
  */
 interface FlatRequest {
   method: string;
@@ -137,11 +149,17 @@ interface FlatRequest {
   body: string | undefined;
   authHeader?: { name: string; code: string };
   authQuery?: { name: string; code: string };
+  /** Code that wins over `url`/`body` when a request's parts are assembled, not typed. */
+  urlCode?: string;
+  bodyCode?: string;
+  /** The function the response goes through first — `powerbiRows`, or nothing. */
+  adapt?: string;
 }
 
 function flattenSource(
   query: QueryDef,
   context: QueryContext,
+  helpers: Helpers,
 ): { request: FlatRequest; tokenConst?: string } | { skipped: string } {
   const { source } = query;
 
@@ -156,18 +174,27 @@ function flattenSource(
     };
   }
 
-  const resolved = resolveIntegrationRequest(source, context.integrations);
+  const resolved =
+    source.kind === 'powerbi'
+      ? resolvePowerBiRequest(source, context.integrations, (template) =>
+          textExpression(template, helpers),
+        )
+      : resolveIntegrationRequest(source, context.integrations);
+
   if (!resolved.ok) {
     return { skipped: resolved.reason };
   }
 
-  const { authHeader, authQuery, tokenConst, ...rest } = resolved.request;
+  const { authHeader, authQuery, tokenConst, urlCode, bodyCode, adapt, ...rest } = resolved.request;
 
   return {
     request: {
       ...rest,
       ...(authHeader ? { authHeader } : {}),
       ...(authQuery ? { authQuery } : {}),
+      ...(urlCode ? { urlCode } : {}),
+      ...(bodyCode ? { bodyCode } : {}),
+      ...(adapt ? { adapt } : {}),
     },
     ...(tokenConst ? { tokenConst } : {}),
   };
@@ -183,11 +210,12 @@ function requestLiteral(
   // An API key in the query string is appended as code rather than folded into the
   // template, because the token is a constant this file declares and a template cannot
   // name one. Encoded the same way the runtime encodes it.
+  const base = request.urlCode ?? textExpression(request.url, helpers);
   const url = request.authQuery
-    ? `${textExpression(request.url, helpers)} + ${stringLiteral(
+    ? `${base} + ${stringLiteral(
         `${request.url.includes('?') ? '&' : '?'}${encodeURIComponent(request.authQuery.name)}=`,
       )} + encodeURIComponent(${request.authQuery.code})`
-    : textExpression(request.url, helpers);
+    : base;
 
   const fields = [`method: ${stringLiteral(request.method)}`, `url: ${url}`];
 
@@ -199,8 +227,13 @@ function requestLiteral(
   }
   if (headers.length > 0) fields.push(`headers: { ${headers.join(', ')} }`);
 
-  if (request.body !== undefined) fields.push(`body: ${textExpression(request.body, helpers)}`);
+  if (request.bodyCode !== undefined) fields.push(`body: ${request.bodyCode}`);
+  else if (request.body !== undefined)
+    fields.push(`body: ${textExpression(request.body, helpers)}`);
   fields.push(`runOnLoad: ${runOnLoad}`);
+  // Last, because it is the one field that is not part of the request: it says what to do
+  // with the answer, and reads better after the thing being sent.
+  if (request.adapt !== undefined) fields.push(`adapt: ${request.adapt}`);
 
   // Always broken across lines: a request is the one thing in a generated page someone
   // actually reads before editing it, and a URL with an interpolation in it is long.
@@ -232,7 +265,7 @@ function queryDeclarations(
    * be the silent failure this generator spends its warnings avoiding.
    */
   const resolved = page.queries.flatMap((query) => {
-    const flat = flattenSource(query, context);
+    const flat = flattenSource(query, context, helpers);
     if ('skipped' in flat) {
       context.warnings.push(
         `Query "${query.name}" was left out of the export because ${flat.skipped}.`,
@@ -245,9 +278,21 @@ function queryDeclarations(
 
   if (resolved.length === 0) return [];
 
+  /*
+   * A request can read another query's result — `?id={{ queries.first.data.id }}` — and
+   * that reference lives in the request rather than in the markup. Deciding on the markup
+   * alone emitted bare `useQuery(...)` calls mentioning a `queries` object nobody had
+   * declared, which is a project that does not compile. Rendered once here rather than
+   * being threaded out of the branches below, which take different indentation and a
+   * different `runOnLoad` and so cannot share a literal.
+   */
+  const requestText = resolved
+    .map((entry) => requestLiteral(entry.request, runs(entry.query), helpers, ''))
+    .join('\n');
+
   // Indentation here is relative: `generatePage` indents every preamble statement by one
   // level when it assembles the component body, so these are written at column zero.
-  if (!reads(body, 'queries')) {
+  if (!reads(body, 'queries') && !reads(requestText, 'queries')) {
     return resolved
       .filter((entry) => runs(entry.query))
       .map(
@@ -347,10 +392,17 @@ export function generatePage(
     tokens: new Set(),
   };
 
+  // Generated before the state declaration although it is written after it, because a
+  // query's *request* can read state — a URL with a hole in it, a DAX statement filtered by
+  // a variable — and those references appear nowhere in the markup. Scanning only the
+  // markup emitted a page that read `state.dataset` without declaring `state`, which is a
+  // project that does not compile rather than one that renders wrongly.
+  const queries = queryDeclarations(page, scanned, walk.helpers, queryContext);
+
   const preamble: string[] = [];
-  const state = stateDeclaration(page, scanned);
+  const state = stateDeclaration(page, [scanned, ...queries].join('\n'));
   if (state) preamble.push(state);
-  preamble.push(...queryDeclarations(page, scanned, walk.helpers, queryContext));
+  preamble.push(...queries);
   // After the two above, so an overlay seeded from a binding can read them — it is an
   // expression like any other, and the names it may mention are already in scope.
   const overlays = overlayDeclaration(walk);
@@ -382,6 +434,14 @@ export function generatePage(
   if (usesQueries) {
     runtime.push(QUERY_MODULE);
     lines.push(`import { useQuery } from '${QUERY_MODULE.specifier}';`);
+  }
+  // Read off what was written rather than off the page, for `usesQueries`' reason one line
+  // up: a Power BI query that was skipped as unresolvable, or dropped because nothing on
+  // the page reads it, must not leave an import of a module nothing calls — the generated
+  // project sets `noUnusedLocals` and would refuse to build.
+  if (usesQueries && preamble.some((line) => line.includes(`adapt: ${POWERBI_ADAPTER}`))) {
+    runtime.push(POWERBI_MODULE);
+    lines.push(`import { ${POWERBI_ADAPTER} } from '${POWERBI_MODULE.specifier}';`);
   }
   if (walk.needsGoTo) {
     runtime.push(NAVIGATE_MODULE);

@@ -34,8 +34,33 @@ import { DisplayName, Id, Slug } from './common.js';
 /* Auth                                                                        */
 /* -------------------------------------------------------------------------- */
 
-export const API_AUTH_TYPES = ['none', 'bearer', 'apiKey', 'basic'] as const;
+export const API_AUTH_TYPES = ['none', 'bearer', 'apiKey', 'basic', 'oauth2'] as const;
 export type ApiAuthType = (typeof API_AUTH_TYPES)[number];
+
+/**
+ * A token endpoint. Its own rule rather than `BaseUrl`'s, for two reasons: it is not a
+ * base that paths are joined onto, so stripping its trailing slash would be meddling with
+ * a URL somebody pasted from a portal, and it is reached by the *server* rather than the
+ * browser, which is the one place in this contract where plain http is not a convenience
+ * worth having — a client secret goes out on this request.
+ */
+export const TokenUrl = z
+  .url('must be a URL')
+  .max(500, 'is too long')
+  .refine((value) => value.startsWith('https://'), 'must start with https://');
+
+/**
+ * The scope that asks Azure AD for a token the Power BI REST API will accept.
+ *
+ * A constant rather than something the connection form makes people remember: it is the
+ * same string for every tenant, getting it wrong produces a token that is refused with no
+ * hint as to why, and the `.default` suffix — "every permission this app registration has
+ * already been granted" — is the part nobody guesses.
+ */
+export const POWERBI_SCOPE = 'https://analysis.windows.net/powerbi/api/.default';
+
+/** Where the Power BI REST API lives. The base URL a Power BI connection wants. */
+export const POWERBI_BASE_URL = 'https://api.powerbi.com';
 
 /**
  * How a request proves who it is — the parts that are *not* the secret.
@@ -61,12 +86,54 @@ export const ApiAuth = z.discriminatedUnion('type', [
     type: z.literal('basic'),
     username: z.string().trim().min(1, 'is required').max(200, 'is too long'),
   }),
+  /**
+   * OAuth2 client credentials — the first scheme here whose credential is not the thing
+   * that gets sent.
+   *
+   * Every other arm hands the stored secret to the request. This one exchanges it, at the
+   * token endpoint, for a short-lived access token, and sends *that* as a bearer. The
+   * exchange happens on the server and nowhere else: a client secret is a long-lived
+   * credential for a whole application rather than for one connection, and D14's "the
+   * browser holds the token" was a decision about a token, not about that. So the browser
+   * is given the minted access token, which expires on its own — which makes this the one
+   * connection kind where what leaves the server is *narrower* than what is stored.
+   *
+   * There is no refresh token, on purpose: client credentials has no user to act for, so
+   * "refresh" is simply minting another one, and a stored refresh token would be a second
+   * long-lived credential to protect for no gain.
+   */
+  z.object({
+    type: z.literal('oauth2'),
+    tokenUrl: TokenUrl,
+    clientId: z.string().trim().min(1, 'is required').max(200, 'is too long'),
+    /**
+     * Space-separated, as the spec has it. For Power BI this is {@link POWERBI_SCOPE} and
+     * the connection form fills it in.
+     *
+     * Required but allowed to be empty, rather than optional with a default: a `.default()`
+     * inside a union arm would make this schema's input and output types differ, which is
+     * the distinction `CreateApiIntegrationRequest` already spends two names on. An
+     * authorization server that wants no scope is a real thing; `''` says so.
+     */
+    scope: z.string().trim().max(500, 'is too long'),
+  }),
 ]);
 export type ApiAuth = z.infer<typeof ApiAuth>;
 
 /** True when this scheme has a credential to store at all. */
 export function authNeedsSecret(auth: ApiAuth): boolean {
   return auth.type !== 'none';
+}
+
+/**
+ * True when the stored secret is exchanged for something else before a request carries it.
+ *
+ * The distinction the secret route turns on: for every other scheme "read the credential"
+ * is a decrypt, and for this one it is an outbound call that can fail, be cached, and
+ * expire.
+ */
+export function authMintsToken(auth: ApiAuth): auth is Extract<ApiAuth, { type: 'oauth2' }> {
+  return auth.type === 'oauth2';
 }
 
 /* -------------------------------------------------------------------------- */
@@ -318,6 +385,17 @@ export const ApiIntegrationSecret = z.object({
   integrationId: Id,
   /** Null when the connection has none stored — `auth: none`, or one never set. */
   secret: z.string().nullable(),
+  /**
+   * When this credential stops working, for the one scheme that knows — `oauth2`, where
+   * what is returned is a minted access token rather than the stored secret. Null for
+   * every other scheme, which is not a claim that the token is eternal: it is the honest
+   * statement that a bearer token somebody pasted in has no expiry we were told about.
+   *
+   * The studio uses it to re-fetch before a page's queries start failing. Without it a
+   * session would hold a token until the tab was reloaded, which is the gap already
+   * recorded against rotation in PLAN.md.
+   */
+  expiresAt: z.iso.datetime().nullable(),
 });
 export type ApiIntegrationSecret = z.infer<typeof ApiIntegrationSecret>;
 

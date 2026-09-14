@@ -63,6 +63,20 @@ export type EmitValue =
    * and `rel="noreferrer noopener"` on a Link.
    */
   | { prop: string; as: 'flag'; on: string; equals?: string; default?: boolean }
+  /**
+   * The prop as it stands, with no coercion at all — the array a chart is drawn from.
+   *
+   * Every other form here narrows a value to something an *attribute* can hold, because
+   * every other element in the library is markup. This one is for an element that is a
+   * component (`from`), whose prop is genuinely `unknown`: bound, it is whatever the
+   * expression evaluated to, and the component decides what that was. Typed out instead,
+   * it is the text that was typed, which is `as: 'string'` — so the two forms below are
+   * the only place this differs from one.
+   *
+   * It is deliberately not usable on an intrinsic tag: there is no `EmitElement` without
+   * `from` that names it, and handing a raw array to a DOM attribute would stringify it.
+   */
+  | { prop: string; as: 'data' }
   /** 'Ada Lovelace' -> 'AL'. The Avatar fallback. */
   | { prop: string; as: 'initials' }
   /** The first character, uppercased, falling back to another value's. */
@@ -124,11 +138,19 @@ export type EmitAttr = EmitValue | { when: EmitCondition; value: EmitValue };
  * it needs state and event handlers, and no amount of template vocabulary describes those
  * without becoming a programming language.
  *
- * So the escape hatch is deliberately narrow. A module named here must be a **wrapper**:
- * it takes the markup the template already produced as its children and adds behaviour to
- * it, never markup of its own. That is what keeps D6 — the canvas and the export render
- * the same elements because they come from the same template, and the module only decides
- * what order they sit in and what happens when one is dragged.
+ * So the escape hatch is deliberately narrow, and two of the three modules are **wrappers**:
+ * they take the markup the template already produced as their children and add behaviour to
+ * it, never markup of their own. That is what keeps D6 for them — the canvas and the export
+ * render the same elements because they come from the same template, and the module only
+ * decides what order they sit in and what happens when one is dragged.
+ *
+ * `CHART` is the exception, and it is one because the rule does not reach it rather than
+ * because the rule was relaxed. A chart's markup *is* its data — five rows are five rects
+ * at coordinates nothing knows until a query answers — so there is no markup for a wrapper
+ * to wrap and no template that could have written it. What keeps D6 there is the twin test
+ * below, which is the stronger promise of the two: the canvas and the export do not merely
+ * render the same elements, they run the same code. A fourth module claiming the same
+ * exemption has to be able to say that its shape is unknowable until run time.
  *
  * `source` is a string for `css.ts`'s reason: it has to reach the studio's code panel in
  * the browser, the API's zip route in Node and a snapshot test, and a plain string is the

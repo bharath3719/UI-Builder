@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import {
   API_CONTENT_TYPES,
+  POWERBI_BASE_URL,
+  POWERBI_SCOPE,
   type ApiAuth,
   type ApiAuthType,
   type ApiContentType,
@@ -20,6 +22,46 @@ const AUTH_LABELS: Record<ApiAuthType, { label: string; hint: string }> = {
   bearer: { label: 'Bearer token', hint: 'Sent as Authorization: Bearer <token>.' },
   apiKey: { label: 'API key', hint: 'Sent in a header or query parameter you name.' },
   basic: { label: 'Basic auth', hint: 'A username and password, base64 encoded.' },
+  oauth2: {
+    label: 'OAuth2 client credentials',
+    hint: 'The client secret is exchanged for a short-lived token, on the server. Power BI uses this.',
+  },
+};
+
+/**
+ * The Azure AD token endpoint, with the tenant left to be filled in.
+ *
+ * Offered as a placeholder rather than prefilled, because the tenant id is the one part
+ * nobody can guess and a URL that looks complete but is not is worse than one that is
+ * visibly a template.
+ */
+const AZURE_TOKEN_URL = 'https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token';
+
+/** What the stored credential is called, which is not "token" for two of the five schemes. */
+const SECRET_LABELS: Record<ApiAuthType, string> = {
+  none: 'Token',
+  bearer: 'Token',
+  apiKey: 'Token',
+  basic: 'Password',
+  oauth2: 'Client secret',
+};
+
+/**
+ * Where the stored credential goes, per scheme.
+ *
+ * Worth four lines rather than one, because the OAuth2 answer is different in a way that
+ * matters to whoever is about to paste a credential in: every other scheme hands what is
+ * typed here to the browser, and that one does not — it trades it, on the server, for a
+ * token that expires. Saying so is the difference between someone deciding this is
+ * acceptable and someone assuming it.
+ */
+const SECRET_HINTS: Record<ApiAuthType, string> = {
+  none: '',
+  bearer: 'Stored encrypted. Sent to the browser when a page runs a query against this connection.',
+  apiKey: 'Stored encrypted. Sent to the browser when a page runs a query against this connection.',
+  basic: 'Stored encrypted. Sent to the browser when a page runs a query against this connection.',
+  oauth2:
+    'Stored encrypted and never sent to the browser. The server exchanges it for a short-lived access token, and that is what a page gets.',
 };
 
 const CONTENT_TYPE_LABELS: Record<ApiContentType, string> = {
@@ -67,6 +109,10 @@ function authOfType(type: ApiAuthType, current: ApiAuth): ApiAuth {
   if (type === current.type) return current;
   if (type === 'apiKey') return { type, in: 'header', name: 'X-Api-Key' };
   if (type === 'basic') return { type, username: '' };
+  // The scope is prefilled with Power BI's because that is what this scheme was added for
+  // and it is a string nobody would produce from memory. It is an ordinary text field, so
+  // a connection to something else replaces it.
+  if (type === 'oauth2') return { type, tokenUrl: '', clientId: '', scope: POWERBI_SCOPE };
   return { type };
 }
 
@@ -195,10 +241,54 @@ export function ConnectionForm({
         />
       )}
 
+      {auth.type === 'oauth2' && (
+        <>
+          <Field
+            label="Token URL"
+            value={auth.tokenUrl}
+            disabled={!canWrite}
+            placeholder={AZURE_TOKEN_URL}
+            onChange={(event) => patch({ auth: { ...auth, tokenUrl: event.target.value } })}
+            error={fieldErrors['auth.tokenUrl']}
+            hint="Where the client secret is exchanged for an access token. Reached by this server, not by the browser."
+          />
+
+          <Field
+            label="Client ID"
+            value={auth.clientId}
+            disabled={!canWrite}
+            placeholder="00000000-0000-0000-0000-000000000000"
+            onChange={(event) => patch({ auth: { ...auth, clientId: event.target.value } })}
+            error={fieldErrors['auth.clientId']}
+          />
+
+          <Field
+            label="Scope"
+            value={auth.scope}
+            disabled={!canWrite}
+            placeholder={POWERBI_SCOPE}
+            onChange={(event) => patch({ auth: { ...auth, scope: event.target.value } })}
+            error={fieldErrors['auth.scope']}
+            hint="Space separated. Power BI wants exactly the one above."
+          />
+
+          {canWrite && draft.baseUrl !== POWERBI_BASE_URL && (
+            <Button
+              variant="ghost"
+              onClick={() =>
+                patch({ baseUrl: POWERBI_BASE_URL, auth: { ...auth, scope: POWERBI_SCOPE } })
+              }
+            >
+              Use the Power BI defaults
+            </Button>
+          )}
+        </>
+      )}
+
       {auth.type !== 'none' && (
         <div className={styles.secretRow}>
           <Field
-            label={auth.type === 'basic' ? 'Password' : 'Token'}
+            label={SECRET_LABELS[auth.type]}
             type="password"
             autoComplete="off"
             value={draft.secret ?? ''}
@@ -214,8 +304,10 @@ export function ConnectionForm({
               draft.secret === null
                 ? 'Will be removed when you save.'
                 : // The exposure this product accepted, said where the decision is made
-                  // rather than only in a plan file. See PLAN.md's note on the call path.
-                  'Stored encrypted. Sent to the browser when a page runs a query against this connection.'
+                  // rather than only in a plan file. See PLAN.md's note on the call path —
+                  // and note that the OAuth2 line is a genuinely different sentence, not a
+                  // softer wording of the same one.
+                  SECRET_HINTS[auth.type]
             }
           />
 

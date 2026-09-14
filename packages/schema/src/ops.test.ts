@@ -465,10 +465,13 @@ describe('state variables', () => {
     let page = addStateVar(fixture(), variable);
     page = setNodeEvent(page, 'b', 'onClick', [
       { kind: 'setState', stateId: variable.id, value: staticProp(1) },
+      // A filter points at a variable the same way the other two writes do, so it has to
+      // be swept up the same way — a step naming a variable that is gone is not
+      // representable.
+      { kind: 'setFilter', stateId: variable.id, value: staticProp('North') },
       { kind: 'runQuery', queryId: other.id },
     ]);
     page = setNodeEvent(page, 'c', 'onClick', [{ kind: 'toggleState', stateId: variable.id }]);
-
     const after = removeStateVar(page, variable.id);
 
     expect(after.state).toEqual([]);

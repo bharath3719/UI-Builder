@@ -15,13 +15,14 @@
  */
 
 import type { ApiAuth, ApiContentType, ApiHeaders } from './api/integrations.js';
-import type { HttpMethod, QuerySource } from './doc.js';
+import type { HttpMethod, Json, QuerySource } from './doc.js';
 import {
   evaluateTemplate,
   parseTemplate,
   stringifyValue,
   type EvaluateExpression,
 } from './expr.js';
+import { powerbiRows } from './powerbi.js';
 
 /** Just the parts of an integration a request is built from. */
 export interface RequestConnection {
@@ -155,6 +156,41 @@ function withQueryParam(url: string, name: string, value: string): string {
  * it is the same thing the user will see once the token expires — one failure mode to
  * recognise instead of two.
  */
+/**
+ * Puts the credential where the scheme says it goes, returning the URL it left behind.
+ *
+ * Its own function because there are now three kinds of request that need it and only one
+ * of them has an endpoint — a Power BI query builds its URL from a dataset id, not from a
+ * path somebody typed, but it authenticates exactly the same way. `headers` is mutated
+ * rather than returned alongside the URL, because the one case that has anything to say
+ * about the URL is the API key in a query string and threading a pair through every caller
+ * to serve it would be the tail wagging the dog.
+ *
+ * `oauth2` is a bearer here and nowhere else does it differ: by the time a request is
+ * being built, the client secret has already been exchanged and `secret` *is* the access
+ * token. That exchange is the server's (`apps/api/src/lib/oauth.ts`); this function has no
+ * business knowing it happened.
+ */
+function applyAuth(
+  headers: Record<string, string>,
+  url: string,
+  auth: ApiAuth,
+  secret: string | null,
+): string {
+  if (secret === null) return url;
+
+  if (auth.type === 'bearer' || auth.type === 'oauth2') {
+    headers.Authorization = `Bearer ${secret}`;
+  } else if (auth.type === 'basic') {
+    headers.Authorization = `Basic ${base64Utf8(`${auth.username}:${secret}`)}`;
+  } else if (auth.type === 'apiKey') {
+    if (auth.in === 'header') headers[auth.name] = secret;
+    else return withQueryParam(url, auth.name, secret);
+  }
+
+  return url;
+}
+
 export function buildIntegrationRequest(
   connection: RequestConnection,
   endpoint: RequestEndpoint,
@@ -173,17 +209,12 @@ export function buildIntegrationRequest(
     headers[name] = asText(value, evaluate);
   }
 
-  let url = joinUrl(connection.baseUrl, asText(endpoint.path, evaluate));
-
-  const auth = connection.auth;
-  if (secret !== null && auth.type === 'bearer') {
-    headers.Authorization = `Bearer ${secret}`;
-  } else if (secret !== null && auth.type === 'basic') {
-    headers.Authorization = `Basic ${base64Utf8(`${auth.username}:${secret}`)}`;
-  } else if (secret !== null && auth.type === 'apiKey') {
-    if (auth.in === 'header') headers[auth.name] = secret;
-    else url = withQueryParam(url, auth.name, secret);
-  }
+  const url = applyAuth(
+    headers,
+    joinUrl(connection.baseUrl, asText(endpoint.path, evaluate)),
+    connection.auth,
+    secret,
+  );
 
   const raw = endpoint.body === null ? '' : asText(endpoint.body, evaluate);
   const body = sendsBody(endpoint.method) && raw !== '' ? raw : undefined;
@@ -262,9 +293,64 @@ export interface CatalogEntry {
  */
 export type IntegrationCatalog = Readonly<Record<string, CatalogEntry>>;
 
+/* -------------------------------------------------------------------------- */
+/* Power BI                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The `executeQueries` URL for one dataset.
+ *
+ * Built rather than typed, because it is the one part of a Power BI query with no
+ * judgement in it: the shape is fixed by the REST API, and the only two decisions are
+ * which dataset and whether it sits in a workspace. `encodeURIComponent` on both, since
+ * these are template output and a bound `{{ state.dataset }}` can hold anything.
+ *
+ * A missing `groupId` means "My workspace", which is a real Power BI location and a URL
+ * that a service principal will always be refused at — see the note on `groupId`.
+ */
+export function powerbiExecuteUrl(baseUrl: string, datasetId: string, groupId: string): string {
+  const scope = groupId === '' ? '' : `/groups/${encodeURIComponent(groupId)}`;
+  return `${baseUrl}/v1.0/myorg${scope}/datasets/${encodeURIComponent(datasetId)}/executeQueries`;
+}
+
+/**
+ * The request body `executeQueries` takes.
+ *
+ * `includeNulls` is on because the alternative is worse in exactly the place it matters:
+ * with it off, a row whose measure evaluated to blank arrives *missing that key*, so a
+ * chart reading it sees a column that exists in some rows and not others and plots a gap
+ * it cannot tell from a zero. On, the key is there holding null, and the chart can decide.
+ *
+ * One query per request. The API accepts more, and there is no use for that here: a page
+ * query is one result, and two results in one response would have to be split apart again
+ * by something that knew which was which.
+ */
+export function powerbiQueryBody(dax: string): string {
+  return JSON.stringify({
+    queries: [{ query: dax }],
+    serializerSettings: { includeNulls: true },
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Results                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What has to happen to a response before a binding sees it.
+ *
+ * `raw` is every request anybody writes: the body is the data, and `resultPath` points at
+ * the rows inside it without moving them. `powerbi` is the exception argued for in
+ * `powerbi.ts` — a protocol envelope nobody chose, which is unwrapped rather than pointed
+ * through. Carried on the built request rather than re-derived from the source, so the
+ * runtime and the code generator read the same field instead of each asking again.
+ */
+export type QueryShape = 'raw' | 'powerbi';
+
 /** A built request, or the reason there isn't one. Never a throw: see `buildQueryRequest`. */
 export type QueryRequestResult =
-  { ok: true; request: BuiltRequest; resultPath: string } | { ok: false; error: string };
+  | { ok: true; request: BuiltRequest; resultPath: string; shape: QueryShape }
+  | { ok: false; error: string };
 
 /**
  * Turns any query into a request, whichever kind of source it names.
@@ -302,6 +388,7 @@ export function buildQueryRequest(
       },
       // A URL query has nowhere to record where its rows are; the binding says it instead.
       resultPath: '',
+      shape: 'raw',
     };
   }
 
@@ -310,6 +397,42 @@ export function buildQueryRequest(
     return {
       ok: false,
       error: 'This query uses an API connection that is no longer available to this workspace.',
+    };
+  }
+
+  if (source.kind === 'powerbi') {
+    const headers: Record<string, string> = {};
+    for (const [name, value] of Object.entries(entry.connection.defaultHeaders)) {
+      headers[name] = asText(value, evaluate);
+    }
+    // Not `connection.contentType`: this body is JSON because the Power BI API says so,
+    // not because of how the connection was configured. A connection set to form-encoding
+    // for its REST endpoints would otherwise send a Content-Type that gets it a 415.
+    headers['Content-Type'] = 'application/json';
+
+    const url = applyAuth(
+      headers,
+      powerbiExecuteUrl(
+        entry.connection.baseUrl,
+        asText(source.datasetId, evaluate),
+        source.groupId === undefined ? '' : asText(source.groupId, evaluate),
+      ),
+      entry.connection.auth,
+      entry.secret,
+    );
+
+    return {
+      ok: true,
+      request: {
+        method: 'POST',
+        url,
+        headers,
+        body: powerbiQueryBody(asText(source.dax, evaluate)),
+      },
+      // Empty because the shape below has already moved the rows to the top: pointing at
+      // them *and* unwrapping them would apply the path twice.
+      resultPath: '',
+      shape: 'powerbi',
     };
   }
 
@@ -332,5 +455,17 @@ export function buildQueryRequest(
       variableEvaluator(variables),
     ),
     resultPath: endpoint.resultPath,
+    shape: 'raw',
   };
+}
+
+/**
+ * A response body as the bindings should see it.
+ *
+ * One line, and it exists so that there is exactly one — the canvas, the preview and the
+ * exported build each read a response, and a reshaping that any of them could forget is a
+ * reshaping that would eventually be done by two of the three (D6).
+ */
+export function adaptQueryData(shape: QueryShape, data: Json | undefined): Json | undefined {
+  return shape === 'powerbi' ? (powerbiRows(data) as Json) : data;
 }

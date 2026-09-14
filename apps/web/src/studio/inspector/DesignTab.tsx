@@ -5,6 +5,11 @@
  * nothing here is per-component: a style section applies to whatever is selected,
  * because CSS does. What *is* per-component lives in the Props tab.
  *
+ * Two sections ask the registry which fields to *offer* — the flex rows, and the
+ * typography rows a component cannot honour. That is not a crack in the rule above: a
+ * field still does the same thing to everything it is shown for, and the registry is
+ * only ever consulted about whether showing it is a promise the component can keep.
+ *
  * The section order is the order a layout is usually reasoned about — where it sits
  * and how it arranges its children first, then its own size, then its spacing, then
  * how it looks. Typography sits above the paint sections because text is the thing
@@ -219,18 +224,52 @@ const TYPOGRAPHY_PROPERTIES = [
   'textTransform',
 ];
 
+/**
+ * Whether the selection can actually honour a property — `ComponentSpec.unsupportedStyles`.
+ *
+ * The same argument as the flex rows above, from the other end: a field that writes a
+ * declaration the component cannot act on is a control that does nothing, and it is worse
+ * than an inert `align-items` because there is no `display` to change to make it work.
+ *
+ * Every member rather than any, unlike the section dot: a Chart and a Heading selected
+ * together still get a Size field, because it does something to one of them. Hiding on
+ * `some` would make the panel depend on what else happened to be in the selection.
+ */
+function useHonours(): (property: string) => boolean {
+  const { page, selectedIds, specFor } = useStudio();
+  const nodes = selectedIds.flatMap((id) => page.nodes[id] ?? []);
+  return (property) =>
+    nodes.length === 0 ||
+    !nodes.every((node) => specFor(node.type)?.unsupportedStyles?.includes(property) === true);
+}
+
 function TypographySection() {
+  const honours = useHonours();
+
+  // The list stays whole, and the header dot with it: "is anything set here" is still
+  // true of a declaration whose field is hidden, and the Layout section already answers
+  // it that way for a flex property on a block element.
   return (
     <Section title="Typography" properties={TYPOGRAPHY_PROPERTIES}>
       <StyleColor label="Color" property="color" />
       <StyleText label="Font" property="fontFamily" placeholder="var(--font-sans)" monospace />
-      <StyleLength label="Size" property="fontSize" placeholder="16" />
-      <StyleSelect label="Weight" property="fontWeight" choices={FONT_WEIGHT} />
+      {honours('fontSize') ? (
+        <StyleLength label="Size" property="fontSize" placeholder="16" />
+      ) : null}
+      {honours('fontWeight') ? (
+        <StyleSelect label="Weight" property="fontWeight" choices={FONT_WEIGHT} />
+      ) : null}
       {/* Line height steps by a tenth: it is a ratio, and a step of 1 would take it
           from 1.5 to 2.5 in a keypress. */}
-      <StyleLength label="Line height" property="lineHeight" placeholder="1.5" step={0.1} />
-      <StyleLength label="Tracking" property="letterSpacing" placeholder="0" step={0.1} />
-      <StyleSegmented label="Align" property="textAlign" choices={TEXT_ALIGN} />
+      {honours('lineHeight') ? (
+        <StyleLength label="Line height" property="lineHeight" placeholder="1.5" step={0.1} />
+      ) : null}
+      {honours('letterSpacing') ? (
+        <StyleLength label="Tracking" property="letterSpacing" placeholder="0" step={0.1} />
+      ) : null}
+      {honours('textAlign') ? (
+        <StyleSegmented label="Align" property="textAlign" choices={TEXT_ALIGN} />
+      ) : null}
     </Section>
   );
 }

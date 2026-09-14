@@ -1,6 +1,7 @@
 import {
   ApiAuth,
   ApiHeaders,
+  authMintsToken,
   authNeedsSecret,
   buildIntegrationRequest,
   variableEvaluator,
@@ -18,7 +19,8 @@ import {
 } from '@ui-builder/schema';
 import type { Db } from '../../db/client.js';
 import type { WorkspaceAccess } from '../../lib/access.js';
-import { ConflictError, NotFoundError } from '../../lib/errors.js';
+import { ConflictError, NotFoundError, UnavailableError } from '../../lib/errors.js';
+import { accessTokenFor, forgetAccessToken, OAuthError } from '../../lib/oauth.js';
 import { OutboundError, sendOutbound } from '../../lib/outbound.js';
 import { decryptSecret, encryptSecret, SecretUnreadableError } from '../../lib/secrets.js';
 import { resolveUniqueSlug } from '../../lib/slug.js';
@@ -278,6 +280,12 @@ export async function updateIntegration(
     include: withEndpoints,
   });
 
+  // Any edit here can be the one that invalidates a minted token — a new client secret, a
+  // different scope, a token endpoint corrected. The fingerprint in `oauth.ts` would catch
+  // all three on the next read; this makes the old token unreachable *now*, which is what
+  // someone who has just rotated a secret because it leaked is asking for.
+  forgetAccessToken(integrationId);
+
   return toIntegrationSummary(integration);
 }
 
@@ -289,6 +297,44 @@ export async function deleteIntegration(
 ): Promise<void> {
   await findIntegration(db, access, integrationId);
   await db.apiIntegration.delete({ where: { id: integrationId } });
+  // Nothing will ever read this connection again, so nothing would notice a stale entry —
+  // which is the reason to drop it rather than a reason not to bother. A deleted
+  // connection should not leave a live token in memory until the process restarts.
+  forgetAccessToken(integrationId);
+}
+
+/**
+ * What a request should actually carry for this connection, and until when.
+ *
+ * The one place the two kinds of credential meet. For four of the five auth schemes this
+ * is a decrypt and there is nothing more to say; for `oauth2` the stored secret is a
+ * client secret that must not leave the server, so it is exchanged here and what comes
+ * back is a minted access token with a real expiry on it.
+ *
+ * Shared by the secret route and the test run because the alternative is the failure mode
+ * that `buildIntegrationRequest` exists to prevent one level up: a test run that passes
+ * with a freshly minted token while the page it was testing is still being handed a client
+ * secret, or the reverse.
+ */
+async function credentialFor(integration: IntegrationRow): Promise<ApiIntegrationSecret> {
+  const none: ApiIntegrationSecret = {
+    integrationId: integration.id,
+    secret: null,
+    expiresAt: null,
+  };
+
+  if (integration.secretCipher === null) return none;
+
+  const stored = decryptSecret(integration.secretCipher);
+  const auth = readAuth(integration.auth);
+  if (!authMintsToken(auth)) return { ...none, secret: stored };
+
+  const token = await accessTokenFor(integration.id, auth, stored);
+  return {
+    integrationId: integration.id,
+    secret: token.accessToken,
+    expiresAt: token.expiresAt.toISOString(),
+  };
 }
 
 /**
@@ -296,7 +342,13 @@ export async function deleteIntegration(
  *
  * A row that will not decrypt reports itself as such rather than as an absent token: the
  * two need different fixes — enter it again versus set one for the first time — and
- * collapsing them into `null` would send someone looking in the wrong place.
+ * collapsing them into `null` would send someone looking in the wrong place. A client
+ * secret the authorization server refuses is the same argument again: 503 with what it
+ * said, rather than a `null` that becomes an unexplained 401 on somebody's dashboard.
+ *
+ * Note what an `oauth2` connection does *not* put on this wire: the client secret. A
+ * caller with the role to read this gets an access token that expires, which is strictly
+ * less than what the same role gets from a `bearer` connection — see `oauth.ts`.
  */
 export async function readIntegrationSecret(
   db: Db,
@@ -304,9 +356,13 @@ export async function readIntegrationSecret(
   integrationId: string,
 ): Promise<ApiIntegrationSecret> {
   const integration = await findIntegration(db, access, integrationId);
-  if (integration.secretCipher === null) return { integrationId, secret: null };
 
-  return { integrationId, secret: decryptSecret(integration.secretCipher) };
+  try {
+    return await credentialFor(integration);
+  } catch (error) {
+    if (error instanceof OAuthError) throw new UnavailableError(error.message);
+    throw error;
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -409,26 +465,25 @@ export async function testEndpoint(
   const integration = await findIntegration(db, access, integrationId);
   const endpoint = findEndpoint(integration, endpointId);
 
-  let secret: string | null = null;
-  if (integration.secretCipher !== null) {
-    try {
-      secret = decryptSecret(integration.secretCipher);
-    } catch (error) {
-      // Reported as a failed run rather than a 500: it is a fact about this connection
-      // that the panel showing the run is exactly the place to fix.
-      if (!(error instanceof SecretUnreadableError)) throw error;
-      return {
-        ok: false,
-        status: null,
-        statusText: '',
-        requestUrl: '',
-        durationMs: 0,
-        headers: {},
-        body: null,
-        error: error.message,
-        saved: false,
-      };
-    }
+  let secret: string | null;
+  try {
+    secret = (await credentialFor(integration)).secret;
+  } catch (error) {
+    // Reported as a failed run rather than a 500: an unreadable stored token and an
+    // authorization server that refuses the client secret are both facts about this
+    // connection, and the panel showing the run is exactly the place to fix either.
+    if (!(error instanceof SecretUnreadableError) && !(error instanceof OAuthError)) throw error;
+    return {
+      ok: false,
+      status: null,
+      statusText: '',
+      requestUrl: '',
+      durationMs: 0,
+      headers: {},
+      body: null,
+      error: error.message,
+      saved: false,
+    };
   }
 
   const request = buildIntegrationRequest(

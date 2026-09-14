@@ -422,7 +422,7 @@ function collectFromNode(node: Node): ExpressionSite[] {
   for (const [event, steps] of Object.entries(node.events)) {
     steps.forEach((step, index) => {
       const at = `events.${event}[${index}]`;
-      if (step.kind === 'setState') bound(step.value, `${at}.value`);
+      if (step.kind === 'setState' || step.kind === 'setFilter') bound(step.value, `${at}.value`);
       else if (step.kind === 'navigate') bound(step.to, `${at}.to`);
       else if (step.kind === 'showToast') bound(step.message, `${at}.message`);
       else if (step.kind === 'custom') {

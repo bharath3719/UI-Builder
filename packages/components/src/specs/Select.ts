@@ -9,7 +9,8 @@ export const SelectSpec: ComponentSpec = {
   description: 'A dropdown of choices, one per line.',
 
   props: [
-    { name: 'options', label: 'Options', type: 'text', placeholder: 'One per line' },
+    // `data`, not `text`: bound to a query this is the array itself. See `Table`'s rows.
+    { name: 'options', label: 'Options', type: 'data', placeholder: 'One per line' },
     // Only meaningful once `options` is bound to an array; a typed list says which is
     // which by position. Empty falls back to the conventional keys — value/id/key and
     // label/name/title/text — so an ordinary API response needs neither filled in.
