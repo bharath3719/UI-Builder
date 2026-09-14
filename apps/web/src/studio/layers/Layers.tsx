@@ -412,7 +412,10 @@ export function Layers() {
   return (
     <div
       ref={listRef}
-      className={styles.tree}
+      // While a drag runs the closed hand belongs to the whole tree, not to the row the
+      // pointer happens to be over — the gesture is already committed to a layer, and the
+      // rows it travels across are destinations rather than things to pick up.
+      className={[styles.tree, drag ? styles.treeDragging : ''].filter(Boolean).join(' ')}
       role="tree"
       aria-label="Layers"
       // One tab stop for the whole tree, with the active row named rather than focused.
@@ -503,8 +506,14 @@ function Row({
     ICON_BY_KEY[node.type] ?? (symbolIdOf(node.type) === null ? CircleQuestionMark : SYMBOL_ICON);
   const Caret = row.expanded ? ChevronDown : ChevronRight;
 
+  // The same test `canDrag` makes, from what the row already has: the page root has
+  // nowhere to move to, and a lock — its own or an ancestor's — pins the layer where it
+  // is. An open hand on either would be a promise the pointerdown then declines.
+  const grabbable = node.parentId !== null && !flags.locked;
+
   const className = [
     styles.row,
+    grabbable && styles.rowGrabbable,
     selected && styles.rowSelected,
     hovered && !selected && styles.rowHovered,
     flags.hidden && styles.rowHidden,

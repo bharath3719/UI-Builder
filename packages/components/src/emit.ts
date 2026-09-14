@@ -209,6 +209,23 @@ export type EmitChild =
    */
   | { radios: { options: string; name: string; checked: string; disabled: string } }
   /**
+   * The same option list expanded into labelled *checkboxes* — `MultiSelect`.
+   *
+   * `radios` with a different input type would be the shorter story and the wrong one: a
+   * radio group's `checked` names one value, and this one names a list of them
+   * (`parseSelection`). The two transforms therefore read the same prop and mean different
+   * things by it, which is exactly the sort of thing a shared implementation would lose.
+   */
+  | { checkOptions: { options: string; name: string; checked: string; disabled: string } }
+  /**
+   * The chosen options' labels, as chips — the field of a closed `MultiSelect`.
+   *
+   * A transform because the shape depends on the data twice over: how many chips there are
+   * is how many values were selected, and what each one *says* is a label that only the
+   * option list knows. `selected` names the prop holding the comma-separated values.
+   */
+  | { chips: { options: string; selected: string } }
+  /**
    * The same option list expanded into anchors, one marked as the current page — the
    * link row shared by `SideNav`, `Header` and `Footer`.
    *

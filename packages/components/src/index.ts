@@ -44,6 +44,7 @@ export { ImageSpec } from './specs/Image.js';
 export { InputSpec } from './specs/Input.js';
 export { LinkSpec } from './specs/Link.js';
 export { ModalSpec } from './specs/Modal.js';
+export { MultiSelectSpec } from './specs/MultiSelect.js';
 export { ProgressSpec } from './specs/Progress.js';
 export { PromptInputSpec } from './specs/PromptInput.js';
 export { RadioSpec } from './specs/Radio.js';

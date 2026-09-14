@@ -139,10 +139,11 @@ The API is bundled with tsup for production.
   `page.test.ts`. Adding one is four edits: `specs/<Name>.ts`, `react/<Name>.tsx`, a line
   in `SPECS`, and a line in `COMPONENTS` — `implementations.test.ts` fails the build if
   the last is forgotten. The exception is a component whose shape depends on what was
-  typed rather than on which props were set: `Select`, `Radio`, the three nav components,
-  `RichText` and `Table` each name a transform (`options`, `radios`, `navItems`,
-  `markdown`, `tableHead`/`tableRows`) that `@ui-builder/codegen` owns the one
-  implementation of. Reach for one only when a static template genuinely cannot say it.
+  typed rather than on which props were set: `Select`, `Radio`, `MultiSelect`, the three
+  nav components, `RichText` and `Table` each name a transform (`options`, `radios`,
+  `checkOptions`/`chips`, `navItems`, `markdown`, `tableHead`/`tableRows`) that
+  `@ui-builder/codegen` owns the one implementation of. Reach for one only when a static
+  template genuinely cannot say it.
 - **An export is markup, with one narrow exception.** A component whose behaviour cannot be
   written as a static tree — `Table`, whose rows can be dragged into a new order — names an
   `EmitModule` in `packages/components/src/runtime.ts`, and the generator ships that file

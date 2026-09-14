@@ -44,6 +44,7 @@ import {
   type Theme,
 } from '@ui-builder/schema';
 import {
+  CANVAS_CURSOR_CSS,
   NODE_ERROR_ATTRIBUTE,
   NODE_ID_ATTRIBUTE,
   NODE_INACTIVE_ATTRIBUTE,
@@ -672,6 +673,7 @@ function PageContents({
     COMPONENT_CSS,
     editing ? EMPTY_CONTAINER_CSS : '',
     editing ? NODE_STATUS_CSS : '',
+    editing ? CANVAS_CURSOR_CSS : '',
     serializePageStyles(styleNodes.values(), theme, { upTo: cell?.breakpoint }),
     // Last, so the forced state outranks the node's own rules on source order as well
     // as on specificity.

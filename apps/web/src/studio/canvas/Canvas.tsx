@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { NODE_ID_ATTRIBUTE, PageRenderer } from '@ui-builder/runtime';
+import { DRAG_READY_ATTRIBUTE, NODE_ID_ATTRIBUTE, PageRenderer } from '@ui-builder/runtime';
 import { useIntegrationCatalog } from '../../api/useIntegrationCatalog.js';
 import { isLocked, symbolDefaultProps, type Node, type NodeId } from '@ui-builder/schema';
 import { useStudio } from '../state/context.js';
@@ -428,6 +428,29 @@ export function Canvas() {
   const frameInert = drag !== null || panning || panReady || band !== null;
 
   /**
+   * The open hand over anything the canvas would pick up.
+   *
+   * An attribute on the frame's root rather than a rule in the studio's stylesheet, because
+   * the studio's CSS stops at the iframe — see `CANVAS_CURSOR_CSS`, which is the rule it
+   * switches on. The condition is `canDrag`, the same function the press consults, so the
+   * cursor cannot promise a drag the pointerdown then declines: the page root has nowhere
+   * to move to, a locked node is pinned, and a reader who may not edit drags nothing.
+   *
+   * Cleared while the frame is inert, where the parent's own cursor takes over — mid-drag
+   * that is `grabbing`, and mid-pan it is the pan's.
+   */
+  useEffect(() => {
+    const root = doc?.documentElement;
+    if (!root) return;
+
+    const ready = writable && !frameInert && hoveredId !== null && canDrag(page, hoveredId);
+    if (ready) root.setAttribute(DRAG_READY_ATTRIBUTE, '');
+    else root.removeAttribute(DRAG_READY_ATTRIBUTE);
+
+    return () => root.removeAttribute(DRAG_READY_ATTRIBUTE);
+  }, [doc, writable, frameInert, hoveredId, page]);
+
+  /**
    * The node whose spacing handles are showing, or null.
    *
    * One node only — see `SpacingHandles`, which explains why a gesture drawn on one
@@ -446,6 +469,9 @@ export function Canvas() {
         styles.area,
         panning ? styles.areaPanning : '',
         !panning && panReady ? styles.areaPanReady : '',
+        // Mid-drag the frame is inert, so the closed hand has to come from out here or the
+        // design's own cursor would show through a gesture that is already under way.
+        drag ? styles.areaDragging : '',
       ]
         .filter(Boolean)
         .join(' ')}

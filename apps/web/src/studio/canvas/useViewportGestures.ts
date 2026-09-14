@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { isTyping } from '../shortcuts.js';
 import { useStudio } from '../state/context.js';
 import type { ViewportControl } from '../state/context.js';
+import { scrollsWithinFrame } from './frameScroll.js';
 import {
   ARTBOARD_SIZE,
   fitTo,
@@ -178,6 +179,28 @@ export function useViewportGestures(
 
     const handle = (event: Event) => {
       const wheel = event as WheelEvent;
+
+      // The design first: a page taller than the artboard, or a scroll area inside it,
+      // owns the wheel that lands on it — panning the viewport instead is what makes the
+      // canvas feel like it is moving the wrong thing. Left entirely to the browser, so
+      // the scroll chains to the page and then stops, and the overlays follow it through
+      // the frame's own scroll listener in `Canvas`.
+      //
+      // Ctrl/⌘ never reaches here: it is the zoom modifier at every scale and over every
+      // part of the canvas, including a design that could have scrolled.
+      if (
+        !wheel.ctrlKey &&
+        !wheel.metaKey &&
+        scrollsWithinFrame(
+          doc,
+          wheel.target,
+          pixelDelta(wheel.deltaX, wheel.deltaMode),
+          pixelDelta(wheel.deltaY, wheel.deltaMode),
+        )
+      ) {
+        return;
+      }
+
       const projection = frameProjection(doc, viewportRef.current.zoom);
       onWheel(
         wheel,

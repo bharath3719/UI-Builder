@@ -36,6 +36,24 @@ export function parseOptions(text: string): SelectOption[] {
 }
 
 /**
+ * `one, three` — the values a `MultiSelect` starts with, as a list.
+ *
+ * A comma rather than a newline, which is what `parseOptions` splits on: the two fields sit
+ * next to each other in the inspector, and one that took lines would look like a second
+ * option list. A value containing a comma cannot be named here, and that is the trade — the
+ * alternative is an escape rule in a field where someone types `one, three`.
+ *
+ * Its own function rather than a `split` at each call site for `parseOptions`' reason: the
+ * canvas and the export have to agree about which boxes are ticked (D6).
+ */
+export function parseSelection(text: string): string[] {
+  return text
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+/**
  * Which of a set of options is the current one: the one that matches, or the first.
  *
  * `Tabs` is why the fallback is here rather than in the component — a tab strip with

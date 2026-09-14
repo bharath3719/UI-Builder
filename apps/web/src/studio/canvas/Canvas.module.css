@@ -33,6 +33,13 @@
   cursor: grabbing;
 }
 
+/* A drag in flight. The frame is inert while one runs, so the design cannot set this
+   itself — the closed hand belongs to the whole canvas until the drop. */
+.areaDragging,
+.areaDragging .scene {
+  cursor: grabbing;
+}
+
 /* The pan/zoom transform (§5.4), applied to one wrapper and nothing else. The origin
    is the top-left so that the viewport's x/y are simply where the artboard's corner
    sits — a centred origin would make every conversion depend on the element's size. */

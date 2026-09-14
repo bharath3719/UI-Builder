@@ -587,6 +587,160 @@ body {
   opacity: 0.5;
 }
 
+/* --- Multi select ------------------------------------------------------------
+   A native <details> whose panel holds real checkboxes. That is what lets a
+   multi-select ship with no JavaScript: opening the panel is a browser feature, and
+   each choice is a control that submits under the group's one name.
+
+   The field borrows Select's chevron — the same data URI, and the same reason it is
+   the library's only literal colour: a background image cannot read currentColor. */
+
+.ub-multiselect {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.ub-multiselect:where([data-disabled]) {
+  opacity: 0.5;
+}
+
+.ub-multiselect-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 4px 32px 4px 10px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.5;
+  cursor: pointer;
+  /* The disclosure triangle, in both spellings. The chevron above stands for it. */
+  list-style: none;
+}
+
+.ub-multiselect-field::-webkit-details-marker {
+  display: none;
+}
+
+.ub-multiselect-field:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -1px;
+}
+
+.ub-multiselect-placeholder {
+  color: var(--muted-foreground);
+}
+
+/* Wrapping rather than scrolling: six choices is an ordinary selection, and a field
+   that grows says so where one that clips a row does not. */
+.ub-multiselect-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ub-multiselect-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  background: var(--muted);
+  border-radius: var(--radius-sm);
+  color: var(--foreground);
+  font-size: 0.8125em;
+  line-height: 1.5;
+}
+
+/* Absolute, so the panel covers what follows it instead of pushing the page down —
+   the one thing a dropdown has to do that a disclosure does not. */
+.ub-multiselect-menu {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 4px;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+
+.ub-multiselect-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--popover-foreground);
+  font-size: 14px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.ub-multiselect-option:hover {
+  background: var(--muted);
+}
+
+/* The Checkbox tick, on a control that is not a Checkbox node — the same appearance:
+   none input and the same rotated corner, because a tick that differed between the
+   two would read as two different kinds of choice. */
+.ub-multiselect-check {
+  display: inline-grid;
+  place-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  appearance: none;
+  background: var(--background);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-sm);
+  cursor: inherit;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.ub-multiselect-check::before {
+  content: '';
+  width: 9px;
+  height: 5px;
+  border-left: 2px solid var(--primary-foreground);
+  border-bottom: 2px solid var(--primary-foreground);
+  transform: rotate(-45deg) translate(1px, -1px);
+  opacity: 0;
+}
+
+.ub-multiselect-check:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.ub-multiselect-check:checked::before {
+  opacity: 1;
+}
+
+.ub-multiselect-check:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.ub-multiselect-label {
+  min-width: 0;
+}
+
 /* --- Checkbox ---------------------------------------------------------------
    A real input with appearance: none, so the space bar, the focus ring and the
    label association keep working. The tick is a rotated corner of borders rather

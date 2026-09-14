@@ -37,6 +37,7 @@ import {
   Info,
   LetterText,
   Link as LinkIcon,
+  ListChecks,
   MessageCircle,
   MessageSquareText,
   MessagesSquare,
@@ -92,6 +93,7 @@ import { Image } from './Image.js';
 import { Input } from './Input.js';
 import { Link } from './Link.js';
 import { Modal } from './Modal.js';
+import { MultiSelect } from './MultiSelect.js';
 import { Progress } from './Progress.js';
 import { PromptInput } from './PromptInput.js';
 import { Radio } from './Radio.js';
@@ -146,6 +148,7 @@ export const COMPONENTS: Record<string, ComponentType<any>> = {
   Input,
   Textarea,
   Select,
+  MultiSelect,
   Radio,
   Checkbox,
   Switch,
@@ -210,6 +213,7 @@ export const ICONS: Record<string, LucideIcon> = {
   Info,
   LetterText,
   Link: LinkIcon,
+  ListChecks,
   MessageCircle,
   MessageSquareText,
   MessagesSquare,

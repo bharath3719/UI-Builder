@@ -31,6 +31,7 @@ import {
   parseOptions,
   parseRichText,
   parseFields,
+  parseSelection,
   parseTable,
   selectedOption,
   type EmitAttr,
@@ -612,6 +613,65 @@ function expandChild(child: EmitChild, context: ExpandContext): JsxNode[] {
         ],
       );
     });
+  }
+
+  if ('checkOptions' in child) {
+    const { node } = context;
+    const spec = child.checkOptions;
+    staticOnly(context, 'the checkbox list', [
+      spec.options,
+      spec.name,
+      spec.checked,
+      spec.disabled,
+    ]);
+    const group = asString(readProp(node, spec.name), 'choices');
+    const selected = parseSelection(asString(readProp(node, spec.checked)));
+    const disabled = asBoolean(readProp(node, spec.disabled));
+
+    return parseOptions(asString(readProp(node, spec.options))).map((option) => {
+      const attrs: JsxAttr[] = [
+        { name: 'type', kind: 'string', value: 'checkbox' },
+        { name: 'className', kind: 'string', value: 'ub-multiselect-check' },
+        { name: 'name', kind: 'string', value: group },
+        { name: 'value', kind: 'string', value: option.value },
+      ];
+      // `defaultChecked`, matching Checkbox and the radio group above: the document says
+      // which boxes the shipped control starts with, not which ones it is pinned to.
+      if (selected.includes(option.value)) attrs.push({ name: 'defaultChecked', kind: 'bare' });
+      if (disabled) attrs.push({ name: 'disabled', kind: 'bare' });
+
+      return element(
+        'label',
+        [{ name: 'className', kind: 'string', value: 'ub-multiselect-option' }],
+        [
+          element('input', attrs),
+          element(
+            'span',
+            [{ name: 'className', kind: 'string', value: 'ub-multiselect-label' }],
+            [{ kind: 'text', value: option.label }],
+          ),
+        ],
+      );
+    });
+  }
+
+  if ('chips' in child) {
+    const { node } = context;
+    const spec = child.chips;
+    staticOnly(context, 'the selected chips', [spec.options, spec.selected]);
+    const selected = parseSelection(asString(readProp(node, spec.selected)));
+
+    // Option order, not the order the values were typed in: the chips have to read the
+    // same way as the list they were ticked in, and the field is not a ranking.
+    return parseOptions(asString(readProp(node, spec.options)))
+      .filter((option) => selected.includes(option.value))
+      .map((option) =>
+        element(
+          'span',
+          [{ name: 'className', kind: 'string', value: 'ub-multiselect-chip' }],
+          [{ kind: 'text', value: option.label }],
+        ),
+      );
   }
 
   if ('navItems' in child) {

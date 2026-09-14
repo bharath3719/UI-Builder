@@ -336,7 +336,9 @@ function StudioFrame({
                 <Components />
               </Section>
 
-              <Section title={RAIL_LABELS.library} hidden={view !== 'library'}>
+              {/* Flush, like the layers tree: the palette scrolls its own list so that
+                  its search field can stay fixed above it. */}
+              <Section title={RAIL_LABELS.library} hidden={view !== 'library'} flush>
                 <Palette />
               </Section>
 

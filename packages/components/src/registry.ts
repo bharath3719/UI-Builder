@@ -50,6 +50,7 @@ import { ImageSpec } from './specs/Image.js';
 import { InputSpec } from './specs/Input.js';
 import { LinkSpec } from './specs/Link.js';
 import { ModalSpec } from './specs/Modal.js';
+import { MultiSelectSpec } from './specs/MultiSelect.js';
 import { ProgressSpec } from './specs/Progress.js';
 import { PromptInputSpec } from './specs/PromptInput.js';
 import { RadioSpec } from './specs/Radio.js';
@@ -106,6 +107,9 @@ export const SPECS: readonly ComponentSpec[] = [
   InputSpec,
   TextareaSpec,
   SelectSpec,
+  // Straight after Select: it is the same question with more than one answer, and someone
+  // who has just found the dropdown is who reaches for it.
+  MultiSelectSpec,
   RadioSpec,
   CheckboxSpec,
   SwitchSpec,
