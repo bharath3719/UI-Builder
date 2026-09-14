@@ -58,6 +58,24 @@ export class ConflictError extends AppError {
 }
 
 /**
+ * Asked too often. Thrown by the rate limiter, and an `AppError` for a specific reason.
+ *
+ * `@fastify/rate-limit` *throws* whatever its `errorResponseBuilder` returns, so a plain
+ * object comes out of the builder with no `statusCode` on it, misses every branch of
+ * `toAppError`, and is reported as a 500 — the limiter refusing a caller while telling
+ * them the server is broken. Building the refusal as a real error is what makes it a 429.
+ *
+ * `statusCode` is a parameter because the plugin also uses this path for a ban (403) when
+ * one is configured; nothing configures one today, and hard-coding 429 here would be a
+ * quiet lie the day something does.
+ */
+export class RateLimitedError extends AppError {
+  constructor(message: string, statusCode = 429) {
+    super('rate_limited', statusCode, message);
+  }
+}
+
+/**
  * A good request this deployment is not equipped to serve.
  *
  * Not a bug and not the caller's fault, so neither `internal_error` nor a 4xx: something

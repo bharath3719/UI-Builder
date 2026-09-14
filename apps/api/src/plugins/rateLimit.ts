@@ -35,6 +35,7 @@ import rateLimit from '@fastify/rate-limit';
 import fp from 'fastify-plugin';
 import type { FastifyRequest } from 'fastify';
 import { isTest } from '../env.js';
+import { RateLimitedError } from '../lib/errors.js';
 
 /** Everything else, as a backstop. Generous: the studio is a chatty client. */
 const GLOBAL_MAX = 600;
@@ -94,13 +95,20 @@ export default fp(
       /*
        * Through the normal error envelope, so a 429 reads like every other refusal this
        * API makes rather than like a different service answering.
+       *
+       * An *error*, not the response body. The plugin does `throw errorResponseBuilder(…)`,
+       * so what comes back from here lands in `setErrorHandler` like anything else a route
+       * throws — and a plain `{ error: … }` object is not something `toAppError` can
+       * recognise, so it became `internal_error` with a 500. The limiter worked; it just
+       * told every throttled caller the server had fallen over. Returning an `AppError`
+       * puts it back on the one path that produces the envelope, status and log line every
+       * other refusal gets.
        */
-      errorResponseBuilder: (_request, context) => ({
-        error: {
-          code: 'rate_limited',
-          message: `Too many requests. Try again in ${Math.ceil(context.ttl / 1000)} seconds.`,
-        },
-      }),
+      errorResponseBuilder: (_request, context) =>
+        new RateLimitedError(
+          `Too many attempts. Try again in ${Math.ceil(context.ttl / 1000)} seconds.`,
+          context.statusCode,
+        ),
     });
   },
   { name: 'rate-limit' },

@@ -16,6 +16,7 @@ import * as documentsApi from '../api/documents.js';
 import { keys, useProject } from '../api/queries.js';
 import { formErrorMessage } from '../lib/formErrors.js';
 import { UserMenu } from '../shell/UserMenu.js';
+import { useToast } from '../toast/context.js';
 import { Button } from '../ui/Button.js';
 import { Menu, MenuCheckItem, MenuContent, MenuTrigger } from '../ui/Menu.js';
 import { ScreenLoading, ScreenMessage } from '../ui/Screen.js';
@@ -133,6 +134,7 @@ export function PreviewRoute() {
 
   const [deviceId, setDeviceId] = useState(DEVICE_PRESETS[0]?.id ?? 'fit');
   const [sharing, setSharing] = useState(false);
+  const toast = useToast();
 
   if (project.isPending || saved.isPending) {
     return <ScreenLoading label="Loading preview" />;
@@ -242,6 +244,11 @@ export function PreviewRoute() {
           const destination = doc.pages.find((candidate) => candidate.path === path);
           if (destination) void navigate(`/preview/${project.data.id}/${destination.id}`);
         }}
+        // Checking the page against real data is most of what the preview is for, so a
+        // query that fails here is the answer, not an interruption.
+        onQueryFailure={({ id, name, message }) =>
+          toast.error(message, { title: `Query “${name}” failed`, key: `query:${id}` })
+        }
       />
 
       <ShareDialog

@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { DRAG_READY_ATTRIBUTE, NODE_ID_ATTRIBUTE, PageRenderer } from '@ui-builder/runtime';
+import {
+  DRAG_READY_ATTRIBUTE,
+  NODE_ID_ATTRIBUTE,
+  PageRenderer,
+  type QueryFailure,
+} from '@ui-builder/runtime';
 import { useIntegrationCatalog } from '../../api/useIntegrationCatalog.js';
+import { useToast } from '../../toast/context.js';
 import { isLocked, symbolDefaultProps, type Node, type NodeId } from '@ui-builder/schema';
 import { useStudio } from '../state/context.js';
 import {
@@ -102,6 +108,27 @@ export function Canvas() {
   } = studio;
 
   const integrations = useIntegrationCatalog(workspaceId);
+
+  /**
+   * A query failing while the page is being built.
+   *
+   * Nothing said so before this. The error lands on the query's own state, which is the
+   * right place for a *finished* page to read it from — but on the canvas nobody has bound
+   * `{{ queries.users.error }}` to anything yet, so a connection with a dead token showed
+   * up as a list that simply stayed empty, and the obvious reading of that is that the
+   * binding is wrong. The point of the toast is to say it is not.
+   *
+   * Keyed per query, so one broken endpoint is one toast however many times the request is
+   * rebuilt — and typing in a field that a query interpolates rebuilds it on every
+   * keystroke.
+   */
+  const toast = useToast();
+  const onQueryFailure = useCallback(
+    ({ id, name, message }: QueryFailure) => {
+      toast.error(message, { title: `Query “${name}” failed`, key: `query:${id}` });
+    },
+    [toast],
+  );
 
   const symbolProps = useMemo(() => (symbol ? symbolDefaultProps(symbol) : undefined), [symbol]);
 
@@ -546,6 +573,7 @@ export function Canvas() {
               // The workspace's API connections, credentials included. Held by the host
               // rather than the document, which carries none — see `useIntegrationCatalog`.
               integrations={integrations}
+              onQueryFailure={onQueryFailure}
               // Editing a component renders it against its own defaults, which is what a
               // placement that sets nothing would show. Without them every binding in it
               // would draw its fallback, and a component is not buildable if you cannot

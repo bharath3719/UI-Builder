@@ -9,6 +9,7 @@ import {
 } from '@ui-builder/codegen';
 import type { ProjectDoc } from '@ui-builder/schema';
 import { useIntegrations } from '../../api/queries.js';
+import { useToast } from '../../toast/context.js';
 import { Button } from '../../ui/Button.js';
 import { useStudio } from '../state/context.js';
 import styles from './CodeDialog.module.css';
@@ -83,6 +84,7 @@ export function CodeDialog({
   const [selected, setSelected] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const { workspaceId } = useStudio();
+  const toast = useToast();
 
   /*
    * The workspace's connections, in the generator's own shape.
@@ -131,22 +133,38 @@ export function CodeDialog({
     }
   };
 
+  /*
+   * Building the zip happens in a click handler, which is why it is wrapped.
+   *
+   * An error boundary does not cover event handlers, so anything `projectArchive` threw
+   * here — or a browser refusing the blob — went to the console and nowhere else: the
+   * button simply did nothing, twice, and then the user concluded export was broken
+   * without ever being told what broke.
+   */
   const download = () => {
-    const archive = projectArchive(doc, { integrations });
-    // A fresh copy of the bytes: `Blob` will not take a view onto a buffer it does not own
-    // the whole of, and the archive is a plain `Uint8Array`.
-    const url = URL.createObjectURL(
-      new Blob([archive.bytes.slice().buffer], { type: 'application/zip' }),
-    );
+    try {
+      const archive = projectArchive(doc, { integrations });
+      // A fresh copy of the bytes: `Blob` will not take a view onto a buffer it does not
+      // own the whole of, and the archive is a plain `Uint8Array`.
+      const url = URL.createObjectURL(
+        new Blob([archive.bytes.slice().buffer], { type: 'application/zip' }),
+      );
 
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = archive.filename;
-    link.click();
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = archive.filename;
+      link.click();
 
-    // The browser has already read the URL synchronously; revoking now frees the blob
-    // rather than leaving it held for the life of the tab.
-    URL.revokeObjectURL(url);
+      // The browser has already read the URL synchronously; revoking now frees the blob
+      // rather than leaving it held for the life of the tab.
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export failed', error);
+      toast.error('The project could not be packaged for download. Please try again.', {
+        title: 'Export failed',
+        key: 'export',
+      });
+    }
   };
 
   return (

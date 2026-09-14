@@ -139,6 +139,88 @@ async function readBody(response: Response): Promise<Json | undefined> {
   }
 }
 
+/**
+ * A short reason a response failed, in a sentence rather than a status line.
+ *
+ * `401 Unauthorized` is accurate and tells a person building a page nothing they can act
+ * on. The common statuses have one obvious cause each from this side of the wire — a
+ * missing token, a wrong path, a server that is down — so they get said outright, and
+ * anything else falls back to the status with whatever the server called it.
+ *
+ * The body is mined for a message before any of that, because an API that bothered to
+ * explain itself is always more useful than a status: "Query (1,4) The syntax for ',' is
+ * incorrect" beats "400 Bad Request" by a distance.
+ */
+function failureMessage(response: Response, body: Json | undefined): string {
+  const fromBody = messageInBody(body);
+  if (fromBody) return fromBody;
+
+  switch (response.status) {
+    case 401:
+      return 'The connection was refused (401). Its token may be missing or expired.';
+    case 403:
+      return 'The connection is not allowed to read this (403).';
+    case 404:
+      return 'That endpoint was not found (404). Check the URL or path.';
+    case 429:
+      return 'The API is rate limiting these requests (429). Try again shortly.';
+    default:
+      break;
+  }
+
+  if (response.status >= 500) {
+    return `The API returned a server error (${response.status}).`;
+  }
+
+  const label = response.statusText.trim();
+  return label ? `${response.status} ${label}` : `The request failed (${response.status}).`;
+}
+
+/**
+ * The message an error body carries, if it carries one anywhere recognisable.
+ *
+ * There is no standard for this, so the shapes checked are simply the ones that turn up:
+ * `{ message }`, `{ error: 'text' }`, `{ error: { message } }`. Nothing is inferred beyond
+ * them — a wrong guess would put an arbitrary string from a response in front of someone as
+ * if it were an explanation.
+ */
+function messageInBody(body: Json | undefined): string | undefined {
+  if (typeof body === 'string') {
+    const text = body.trim();
+    // A returned HTML page is a proxy or a login screen, not a message worth showing.
+    return text && text.length <= 200 && !text.startsWith('<') ? text : undefined;
+  }
+
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return undefined;
+
+  const record = body as Record<string, Json | undefined>;
+  const direct = record.message ?? record.error_description;
+  if (typeof direct === 'string' && direct.trim()) return direct.trim();
+
+  const error = record.error;
+  if (typeof error === 'string' && error.trim()) return error.trim();
+
+  if (typeof error === 'object' && error !== null && !Array.isArray(error)) {
+    const nested = (error as Record<string, Json | undefined>).message;
+    if (typeof nested === 'string' && nested.trim()) return nested.trim();
+  }
+
+  return undefined;
+}
+
+/**
+ * Why a `fetch` rejected. The browser says "Failed to fetch" for every one of these and
+ * the distinction it hides is the whole diagnosis: from a page, a cross-origin API that
+ * has not been told about this origin is by far the most likely cause, and it is not
+ * something staring at the URL will reveal.
+ */
+function transportMessage(error: unknown): string {
+  if (error instanceof Error && error.name === 'TypeError') {
+    return 'The request could not be sent. The API may be unreachable, or may not allow requests from this page (CORS).';
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
 const NO_RESULTS: Readonly<Record<string, QueryState>> = Object.freeze({});
 
 export interface PageQueries {
@@ -146,6 +228,16 @@ export interface PageQueries {
   scope: RenderScope;
   run: (id: string) => Promise<void>;
 }
+
+/** A query that went out and came back wrong. See `onFailure` on the hook. */
+export interface QueryFailure {
+  id: string;
+  /** The name the author gave it, which is what they will recognise. */
+  name: string;
+  message: string;
+}
+
+export type QueryFailureHandler = (failure: QueryFailure) => void;
 
 const NO_INTEGRATIONS: IntegrationCatalog = Object.freeze({});
 
@@ -160,8 +252,32 @@ export function usePageQueries(
    * and are retried when it arrives, because the catalogue is part of the request key.
    */
   catalog: IntegrationCatalog = NO_INTEGRATIONS,
+  /**
+   * Told when a query that actually went out came back wrong.
+   *
+   * The state is already on the query (`queries.users.error`), which is what a *page* binds
+   * to. This is for the host: in the studio nobody has bound anything yet, so a broken
+   * endpoint is otherwise completely silent while you build against it — the list just
+   * stays empty. The canvas turns this into a toast.
+   *
+   * Only real responses and real transport failures. A query whose request could not be
+   * built at all is deliberately excluded: that is the state every integration query is in
+   * for the first render or two while the credential catalogue loads, and reporting it
+   * would announce a problem that resolves itself a moment later, on every page load.
+   */
+  onFailure?: QueryFailureHandler,
 ): PageQueries {
   const [results, setResults] = useState<Readonly<Record<string, QueryState>>>(NO_RESULTS);
+
+  /**
+   * Held in a ref so that a host passing an inline closure does not give `run` a new
+   * identity on every render — which would re-run the auto-run effect and, through it,
+   * every `runOnLoad` query.
+   */
+  const failureHandler = useRef(onFailure);
+  useEffect(() => {
+    failureHandler.current = onFailure;
+  }, [onFailure]);
 
   const cyclic = useMemo(() => cyclicQueries(queries), [queries]);
   const states = useMemo(() => statesByName(queries, results, cyclic), [queries, results, cyclic]);
@@ -177,6 +293,14 @@ export function usePageQueries(
   const inflight = useRef(new Map<string, AbortController>());
   /** The request key each query last sent, which is what "already run" means. */
   const sent = useRef(new Map<string, string>());
+
+  const report = useCallback(
+    (id: string, message: string) => {
+      const query = queries.find((candidate) => candidate.id === id);
+      failureHandler.current?.({ id, name: query?.name ?? id, message });
+    },
+    [queries],
+  );
 
   const run = useCallback(
     async (id: string): Promise<void> => {
@@ -225,32 +349,31 @@ export function usePageQueries(
         // running a row adapter over one would turn "400, your DAX is wrong" into no rows.
         const data = response.ok ? adaptQueryData(request.shape, body) : body;
 
+        const failure = response.ok ? undefined : failureMessage(response, body);
+
         setResults((current) => ({
           ...current,
-          [id]: response.ok
-            ? { loading: false, data, error: undefined }
-            : {
-                loading: false,
-                data: undefined,
-                error: `${response.status} ${response.statusText}`.trim(),
-              },
+          [id]: failure
+            ? { loading: false, data: undefined, error: failure }
+            : { loading: false, data, error: undefined },
         }));
+
+        if (failure) report(id, failure);
       } catch (error) {
         // An abort is this hook superseding its own request, not a failure to report.
         if (controller.signal.aborted) return;
+
+        const failure = transportMessage(error);
         setResults((current) => ({
           ...current,
-          [id]: {
-            loading: false,
-            data: undefined,
-            error: error instanceof Error ? error.message : String(error),
-          },
+          [id]: { loading: false, data: undefined, error: failure },
         }));
+        report(id, failure);
       } finally {
         if (inflight.current.get(id) === controller) inflight.current.delete(id);
       }
     },
-    [requests],
+    [requests, report],
   );
 
   useEffect(() => {

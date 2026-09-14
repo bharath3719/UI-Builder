@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { PageRenderer } from '@ui-builder/runtime';
+import { PageRenderer, type QueryFailureHandler } from '@ui-builder/runtime';
 import { useIntegrationCatalog } from '../api/useIntegrationCatalog.js';
 import type { Page, SymbolDef, Theme } from '@ui-builder/schema';
 import { CanvasFrame } from '../studio/canvas/CanvasFrame.js';
@@ -31,6 +31,7 @@ export function PreviewSurface({
   bare = false,
   onOpenPath,
   workspaceId,
+  onQueryFailure,
 }: {
   page: Page;
   /** The document's reusable components, without which every instance is an unknown box. */
@@ -57,6 +58,16 @@ export function PreviewSurface({
    * navigating to the studio (see `useDesignLinks`).
    */
   onOpenPath?: (path: string) => void;
+  /**
+   * Told when one of the page's queries fails.
+   *
+   * A prop rather than a toast raised from in here, because this surface serves two
+   * audiences. In the preview route it is the author checking their own work and a failed
+   * query is exactly what they came to find out about; at `/s/:slug` it is a stranger who
+   * did not build this page, cannot fix it, and should not be shown its plumbing. The
+   * route decides, and the shared one passes nothing.
+   */
+  onQueryFailure?: QueryFailureHandler;
 }) {
   const fits = device.width === null;
   const integrations = useIntegrationCatalog(workspaceId);
@@ -86,6 +97,7 @@ export function PreviewSurface({
             // get the same answer: the host decides what a path means, and without one
             // the frame would navigate to the studio (`useDesignLinks`).
             onNavigate={onOpenPath}
+            onQueryFailure={onQueryFailure}
           />
         </CanvasFrame>
       </div>

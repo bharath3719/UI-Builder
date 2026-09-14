@@ -1,0 +1,175 @@
+/*
+   Toasts — PLAN.md §8 (D12): hairlines, small radii, one accent, no decoration.
+
+   The tone colours are the semantic tokens and nothing else. A toast is the one piece of
+   studio chrome whose whole job is to be noticed, which is exactly why it does not get to
+   invent a colour: if "failed" here is a different red from "failed" in a dialog, both
+   stop meaning anything.
+*/
+
+.viewport {
+  position: fixed;
+  right: var(--sp-6);
+  bottom: var(--sp-6);
+  z-index: var(--z-toast);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+
+  width: min(360px, calc(100vw - var(--sp-6) * 2));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  /* The column is only a position for its rows; clicks belong to the canvas under it. */
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--sp-4);
+  align-items: start;
+
+  padding: var(--sp-4) var(--sp-5);
+
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  color: var(--c-text);
+
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+
+  /* It floats over the canvas, so it is one of the few things §8 allows a shadow. */
+  box-shadow: var(--shadow-popover);
+
+  animation: enter var(--dur) var(--ease);
+}
+
+/*
+   The tone lives on the left edge and the icon, not in the background. A fully tinted
+   panel at this size reads as a coloured block first and a sentence second — and the
+   danger tint in particular starts competing with the canvas it is sitting on top of.
+*/
+.danger {
+  border-left: 2px solid var(--c-danger);
+}
+
+.warn {
+  border-left: 2px solid var(--c-warn);
+}
+
+.ok {
+  border-left: 2px solid var(--c-ok);
+}
+
+.icon {
+  margin-top: 1px; /* optical: aligns the glyph to the first line's cap height */
+  flex: none;
+}
+
+.danger .icon {
+  color: var(--c-danger);
+}
+
+.warn .icon {
+  color: var(--c-warn);
+}
+
+.ok .icon {
+  color: var(--c-ok);
+}
+
+.text {
+  min-width: 0; /* lets a long message wrap instead of widening the grid column */
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+
+.message {
+  margin: 0;
+  color: var(--c-text-muted);
+
+  /* A server message can be a single unbroken token — a URL, an id. */
+  overflow-wrap: anywhere;
+}
+
+.title + .message {
+  margin-top: var(--sp-2);
+}
+
+.action {
+  margin-top: var(--sp-3);
+  padding: 0;
+
+  font: inherit;
+  font-weight: var(--fw-medium);
+  color: var(--c-accent);
+
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.action:hover {
+  color: var(--c-accent-hover);
+  text-decoration: underline;
+}
+
+.close {
+  flex: none;
+  display: grid;
+  place-items: center;
+
+  width: 18px;
+  height: 18px;
+  margin: -1px calc(var(--sp-2) * -1) 0 0;
+  padding: 0;
+
+  color: var(--c-text-subtle);
+
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.close:hover {
+  color: var(--c-text);
+  background: var(--c-surface-hover);
+}
+
+.action:focus-visible,
+.close:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 1px;
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--sp-4));
+  }
+}
+
+/*
+   §8 calls motion functional only, and this one is not: the toast is legible the instant
+   it is painted, so the slide is there to say "this just arrived" and nothing more. That
+   makes it exactly the kind of thing to drop when asked.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}

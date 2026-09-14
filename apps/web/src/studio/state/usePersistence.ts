@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProjectDoc } from '@ui-builder/schema';
 import { ApiError } from '../../api/client.js';
 import * as documentsApi from '../../api/documents.js';
+import { useToast } from '../../toast/context.js';
 
 /**
  * Autosave — PLAN.md §12, Phase 8.
@@ -102,6 +103,13 @@ export function usePersistence({ projectId, doc, writable, onLoaded }: Options):
    */
   const [failedDoc, setFailedDoc] = useState<ProjectDoc | null>(null);
 
+  /*
+   * Autosave runs while the user is looking at the canvas, not at the topbar, so the two
+   * states it can end up stuck in have to announce themselves. `toast` is stable for the
+   * life of the provider, so it is a dependency of `save` without costing anything.
+   */
+  const toast = useToast();
+
   // Refs only for what is read from an async callback, never during a render.
   const inFlight = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -162,6 +170,21 @@ export function usePersistence({ projectId, doc, writable, onLoaded }: Options):
         if (error instanceof ApiError && error.code === 'conflict') {
           setProblem(error.message);
           setStatus('conflict');
+          /*
+           * Said out loud as well as shown in the chip.
+           *
+           * A conflict stops autosave, so from this moment every further edit is being
+           * kept in one tab and nowhere else — and the only thing that said so was a
+           * two-word label in the topbar with the explanation hidden in a `title`
+           * tooltip. That is not enough for the one state where continuing to work has
+           * a cost. Pinned (`duration: 0`) for the same reason: it is not news that
+           * expires, it is a decision that is still outstanding.
+           */
+          toast.warn(error.message, {
+            title: 'This project changed elsewhere',
+            key: 'persistence',
+            duration: 0,
+          });
 
           // Fetch the other side straight away: the choice being offered is between two
           // documents, and one of them has to be in hand to offer it.
@@ -177,15 +200,33 @@ export function usePersistence({ projectId, doc, writable, onLoaded }: Options):
             // Leave `serverDoc` null — the dialog falls back to offering a reload.
           }
         } else {
-          setProblem(error instanceof Error ? error.message : 'The document could not be saved.');
+          const message =
+            error instanceof Error ? error.message : 'The document could not be saved.';
+          setProblem(message);
           setFailedDoc(candidate);
           setStatus('error');
+
+          // Autosave has stopped for this document, so nothing will retry on its own.
+          // Pinned, and carrying the retry — the alternative is the user finding out when
+          // they close the tab.
+          //
+          // Retrying is `setFailedDoc(null)` rather than another `save()` call: the
+          // autosave effect skips the document it last failed on, so clearing that is
+          // exactly what re-arms it, through the one path that already knows about the
+          // debounce and the in-flight guard. Calling `save` from inside `save` would be a
+          // second way to start a request that neither of those two can see.
+          toast.error(message, {
+            title: 'Could not save',
+            key: 'persistence',
+            duration: 0,
+            action: { label: 'Try again', onClick: () => setFailedDoc(null) },
+          });
         }
       } finally {
         inFlight.current = false;
       }
     },
-    [clearTimer, projectId],
+    [clearTimer, projectId, toast],
   );
 
   /* Load. Runs once, because the hook is mounted per project. */
@@ -205,6 +246,10 @@ export function usePersistence({ projectId, doc, writable, onLoaded }: Options):
       })
       .catch((error: unknown) => {
         if (cancelled) return;
+        // Not toasted, unlike the two save failures below. A failed *load* leaves nothing
+        // to edit, so `StudioLayout` gives it the whole screen with the message and a
+        // retry on it — and a toast repeating that sentence in the corner of a screen
+        // already saying it would be the duplicate this file's header warns about.
         setProblem(error instanceof Error ? error.message : 'The document could not be loaded.');
         setStatus('error');
       });

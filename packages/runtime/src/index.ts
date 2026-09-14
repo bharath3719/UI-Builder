@@ -34,6 +34,8 @@ export {
   cyclicQueries,
   usePageQueries,
   type PageQueries,
+  type QueryFailure,
+  type QueryFailureHandler,
   type QueryRequest,
 } from './queries.js';
 export { usePageRuntime, type PageRuntimeValue, type Toast } from './runtime.js';

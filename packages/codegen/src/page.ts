@@ -51,6 +51,7 @@ import {
   objectLiteral,
   overlayDeclaration,
   reads,
+  unguardedQueryReads,
   walkNode,
   type SymbolTarget,
 } from './walk.js';
@@ -511,7 +512,7 @@ export function generatePage(
     usesStyles: walk.usedStyles,
     modules,
     runtime,
-    warnings: [...walk.warnings, ...queryContext.warnings],
+    warnings: [...walk.warnings, ...queryContext.warnings, ...unguardedQueryReads(page)],
     envVars: [...queryContext.tokens].sort().map((constName) => `VITE_${constName}`),
   };
 }

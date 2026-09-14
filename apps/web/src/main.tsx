@@ -5,6 +5,8 @@ import { BrowserRouter } from 'react-router';
 import { App } from './App.js';
 import { createQueryClient } from './api/queries.js';
 import { AuthProvider } from './auth/AuthProvider.js';
+import { ToastProvider } from './toast/ToastProvider.js';
+import { ErrorBoundary } from './ui/ErrorBoundary.js';
 import './styles/global.css';
 
 const container = document.getElementById('root');
@@ -14,14 +16,26 @@ if (!container) throw new Error('#root is missing from index.html');
 // so cached data never outlives the account it belongs to.
 const queryClient = createQueryClient();
 
+/*
+ * Order matters in two places.
+ *
+ * `ToastProvider` is outside `AuthProvider` because losing a session is one of the things
+ * worth announcing, so the thing that announces it has to already exist. It is inside the
+ * boundary because a toast about a crash is no use once the tree holding the toaster is
+ * the thing that crashed — that case is the boundary's, and it renders a whole screen.
+ */
 createRoot(container).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>
+          <AuthProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </AuthProvider>
+        </ToastProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );

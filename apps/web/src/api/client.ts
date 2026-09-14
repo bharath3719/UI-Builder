@@ -13,24 +13,42 @@ import {
  */
 export type FailureCode = ApiErrorCode | 'network_error' | 'contract_error';
 
-/** A failure that has already been turned into something worth showing a user. */
+/**
+ * A failure that has already been turned into something worth showing a user.
+ *
+ * `message` is the sentence a person reads, and nothing else. That is a rule rather than a
+ * description: `formErrorMessage` puts it straight into a banner, so anything technical
+ * that reaches it is technical text on screen — which is how "The API responded 429 in an
+ * unrecognised shape." came to be an answer the sign-in form gave. Where the useful detail
+ * is developer-facing it goes in {@link detail} and to the console, never into `message`.
+ */
 export class ApiError extends Error {
   readonly status: number | null;
   readonly code: FailureCode;
   /** Field-level problems, present only for `validation_error`. */
   readonly details: ApiErrorDetail[];
+  /** What actually happened, for a developer. Never rendered. */
+  readonly detail: string | undefined;
 
   constructor(
     message: string,
     code: FailureCode,
     status: number | null,
-    options?: { cause?: unknown; details?: ApiErrorDetail[] },
+    options?: { cause?: unknown; details?: ApiErrorDetail[]; detail?: string },
   ) {
     super(message, options);
     this.name = 'ApiError';
     this.code = code;
     this.status = status;
     this.details = options?.details ?? [];
+    this.detail = options?.detail;
+
+    // The one place the technical half survives. A contract drift between the studio and
+    // the API is a bug someone has to fix, and the user-facing sentence above deliberately
+    // says nothing that would help them find it.
+    if (this.detail !== undefined) {
+      console.error(`[api] ${this.detail}`, options?.cause ?? '');
+    }
   }
 
   /** The message for `path`, e.g. `'body.email'` — for putting an error under a field. */
@@ -148,8 +166,31 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
     // TanStack Query drops it silently instead of rendering "could not reach the API".
     if (options.signal?.aborted) throw cause;
 
-    throw new ApiError('Could not reach the API server.', 'network_error', null, { cause });
+    throw new ApiError(
+      'Could not reach the server. Check your connection and try again.',
+      'network_error',
+      null,
+      { cause, detail: `fetch failed for ${options.method ?? 'GET'} ${path}` },
+    );
   }
+}
+
+/**
+ * What to say when the API answered but not in the envelope this client understands.
+ *
+ * There is no message to relay in that case, so the status is all there is to go on — and
+ * it is worth more than it looks. A 429 that lost its body is still "you are going too
+ * fast", and saying so beats a generic apology that leaves someone retrying immediately.
+ * Anything genuinely unknown gets the neutral sentence rather than the status code, which
+ * would only be a number for the user to wonder about.
+ */
+function unexpectedResponseMessage(status: number): string {
+  if (status === 429) return 'Too many requests. Please wait a moment and try again.';
+  if (status === 401 || status === 403) return 'You are not allowed to do that.';
+  if (status === 404) return 'That could not be found.';
+  if (status === 413) return 'That is too large to upload.';
+  if (status >= 500) return 'The server had a problem. Please try again in a moment.';
+  return 'Something went wrong. Please try again.';
 }
 
 /** Turns a non-2xx response into an ApiError, falling back when the body is not ours. */
@@ -159,19 +200,25 @@ async function toError(response: Response): Promise<ApiError> {
     payload = await response.json();
   } catch {
     return new ApiError(
-      `The API responded ${response.status} with a non-JSON body.`,
+      unexpectedResponseMessage(response.status),
       'contract_error',
       response.status,
+      {
+        detail: `${response.status} response body was not JSON`,
+      },
     );
   }
 
   const parsed = ApiErrorResponse.safeParse(payload);
   if (!parsed.success) {
     return new ApiError(
-      `The API responded ${response.status} in an unrecognised shape.`,
+      unexpectedResponseMessage(response.status),
       'contract_error',
       response.status,
-      { cause: parsed.error },
+      {
+        cause: parsed.error,
+        detail: `${response.status} response did not match the error envelope`,
+      },
     );
   }
 
@@ -222,20 +269,26 @@ export async function apiRequest<T>(
     payload = await response.json();
   } catch (cause) {
     throw new ApiError(
-      'The API returned a body that is not JSON.',
+      unexpectedResponseMessage(response.status),
       'contract_error',
       response.status,
-      { cause },
+      {
+        cause,
+        detail: `${path} returned a body that is not JSON`,
+      },
     );
   }
 
   const parsed = schema.safeParse(payload);
   if (!parsed.success) {
     throw new ApiError(
-      'The API returned a payload that does not match the contract.',
+      unexpectedResponseMessage(response.status),
       'contract_error',
       response.status,
-      { cause: parsed.error },
+      {
+        cause: parsed.error,
+        detail: `${path} returned a payload that does not match the contract`,
+      },
     );
   }
 

@@ -21,6 +21,7 @@ import {
   type EmitModule,
 } from '@ui-builder/components';
 import {
+  collectExpressions,
   isTruthy,
   nodeClassName,
   stringifyValue,
@@ -29,6 +30,7 @@ import {
   type Json,
   type Node,
   type NodeTree,
+  type Page,
   type PropValue,
   type QueryDef,
   type StateVar,
@@ -482,6 +484,105 @@ function staleQueryWarnings(steps: readonly ActionStep[], where: string, walk: W
         `beside it, so the request will carry the previous value. Drop the step: a query ` +
         `that runs on load re-sends itself when its request changes.`,
     );
+  }
+
+  return warnings;
+}
+
+/**
+ * `queries.<name>.data` with a member access hanging off it that is not optional.
+ *
+ * The capture is the query's name, so the guard checks below can ask about that query
+ * rather than about queries in general.
+ */
+const QUERY_READ = /\bqueries\.([A-Za-z_$][\w$]*)\.data\s*(?:\.|\[)/g;
+
+/**
+ * Whether the expression itself already answers "what if it has not answered yet?".
+ *
+ * `data && data.items`, `data ? data.items : []` and a mention of `loading` are all the
+ * author saying so. `data?.items` never reaches here — the regex above cannot match an
+ * optional access, which is the point of writing it that way.
+ */
+function guardsInSource(source: string, name: string): boolean {
+  const escaped = `queries\\.${name}\\.data`;
+  return (
+    new RegExp(`${escaped}\\s*(?:&&|\\?(?!\\.))`).test(source) ||
+    source.includes(`queries.${name}.loading`)
+  );
+}
+
+/**
+ * Whether a `showIf` above this node already keeps it off the page until the query answers.
+ *
+ * The node's own counts as well as an ancestor's: a condition emits `{cond && <el … />}`,
+ * so every attribute inside that element — and inside everything below it — is evaluated
+ * only when the condition held. Any mention of the query is taken as a guard rather than
+ * only `data`, because `{{ !queries.rows.loading }}` guards exactly as well and a check
+ * that insisted on one spelling would fire on a page that is already careful.
+ */
+function guardedByCondition(tree: NodeTree, nodeId: string, name: string): boolean {
+  let current: Node | undefined = tree.nodes[nodeId];
+
+  while (current) {
+    if (current.showIf?.kind === 'expr' && current.showIf.code.includes(`queries.${name}`)) {
+      return true;
+    }
+    current = current.parentId === null ? undefined : tree.nodes[current.parentId];
+  }
+
+  return false;
+}
+
+/**
+ * Bindings that read *through* a query's result without saying what to do before it answers.
+ *
+ * `queries.rows.data` is `undefined` until the request comes back, so
+ * `{{ queries.rows.data.items }}` throws on the first render. The canvas survives that —
+ * the evaluator catches per expression, the node renders with the prop unset and wears a
+ * badge — and the exported page does not: it has no per-node boundary, cannot grow one
+ * without emitting elements the canvas does not (D6), and so goes blank.
+ *
+ * Said rather than fixed, for `staleQueryWarnings`' reason one line down: fixing it means
+ * wrapping every emitted binding in a guard, which rewrites the shape of the author's own
+ * code to compensate for something they can say themselves. `{{ queries.rows.data?.items }}`
+ * is ordinary JavaScript, works identically on both sides, and is what this warning asks
+ * for.
+ *
+ * **Render-time sites only.** An expression in an action step runs when someone clicks,
+ * long after the request has answered, and a throw there costs that one click rather than
+ * the page — so warning about it would fire on pages that are fine.
+ */
+export function unguardedQueryReads(page: Page): string[] {
+  const warnings: string[] = [];
+
+  for (const site of collectExpressions(page)) {
+    if (site.form !== 'template' || site.path.startsWith('events.')) continue;
+
+    const seen = new Set<string>();
+    for (const match of site.source.matchAll(QUERY_READ)) {
+      const name = match[1];
+      // The pattern's only group is the query's name, so this cannot be missing — but the
+      // index signature says it can, and a `!` here would be a claim rather than a check.
+      if (name === undefined) continue;
+      if (seen.has(name) || guardsInSource(site.source, name)) continue;
+      if (site.nodeId !== undefined && guardedByCondition(page, site.nodeId, name)) continue;
+      seen.add(name);
+
+      const node = site.nodeId === undefined ? undefined : page.nodes[site.nodeId];
+      const where = node === undefined ? site.path : `"${node.name}" (${node.id}) · ${site.path}`;
+      // A request has nowhere to hide: only a node can be held back by a condition.
+      const remedy =
+        node === undefined
+          ? `Write it as queries.${name}.data?.… instead.`
+          : `Write it as queries.${name}.data?.… instead, or hide the node until the ` +
+            `query answers.`;
+
+      warnings.push(
+        `${where}: reads through queries.${name}.data, which is undefined until the ` +
+          `request answers — the canvas renders the fallback, this page throws. ${remedy}`,
+      );
+    }
   }
 
   return warnings;

@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A visual UI builder: workspaces and projects, a drag-and-drop zoomable canvas, a component
 palette, a properties inspector, live preview, and React code export. `README.md` has the
-current feature state; `PLAN.md` (2300 lines) is the architecture record — its numbered
-decisions (D1–D13) and sections (§2, §3, §7, §8, §10) are cited throughout the source, so
-when a comment says "PLAN.md §7" that section is the rationale.
+current feature state; `PLAN.md` is the architecture record — its numbered decisions
+(D1–D15) and sections (§2, §3, §7, §8, §10, §12) are cited throughout the source, so when a
+comment says "PLAN.md §7" that section is the rationale.
 
 ## Commands
 
@@ -55,7 +55,7 @@ raises the timeout for argon2.
 Snapshots only prove the bytes did not move. To prove the output compiles and runs:
 
 ```bash
-npx tsx packages/codegen/scripts/emit.mts <out-dir> [--doc demo|interactive|symbols|powerbi]
+npx tsx packages/codegen/scripts/emit.mts <out-dir> [--doc demo|interactive|symbols|slots|powerbi]
 cd <out-dir> && npm install && npm run build      # the export's own tsc is the real check
 ```
 
@@ -109,8 +109,8 @@ function in `packages/schema/src/ops.ts`, so undo/redo is an array of documents 
 anything unsaved?" is a `!==`. Nothing outside `StudioProvider`'s `editDoc`
 (`apps/web/src/studio/state/`) may write to the document — that is the one place a history
 step is recorded. The node map is flat (`Record<NodeId, Node>` + `children: NodeId[]`), not
-a nested tree (D3). State lives in React context, not Zustand — PLAN.md §5 still says
-Zustand, but D11 revised that and there is no Zustand in the repo.
+a nested tree (D3). State lives in React context, not Zustand (D11) — there is no Zustand
+in the repo.
 
 **3. A stored document is migrated before anything reads it.** `migrateDoc` runs on every
 server-side read. Changing the document types is a two-step edit: change them, then add a
@@ -188,6 +188,20 @@ what proves it.
 - **Access tokens are in memory only**, never `localStorage`. The httpOnly refresh cookie
   is what survives a reload, so `useAuth().user` has three states: `undefined` (still
   asking), `null` (signed out), and the user.
+- **An error `message` is a sentence a user reads; technical detail goes elsewhere.**
+  `ApiError.message` is rendered as-is by `formErrorMessage`, so framework or contract text
+  must never reach it — `ApiError.detail` carries that, and logs it. On the server the same
+  rule runs through `plugins/errors.ts`: only an `AppError` keeps its wording, Fastify's own
+  4xx messages are mapped to studio-voice text by error code, and the original goes to the
+  log as `raw`. Anything thrown out of a route that is not an `AppError` is a 500 with a
+  generic message, so a new failure mode needs an `AppError` subclass, not a bare throw.
+- **A toast is for a failure whose cause is not on screen.** `toast/ToastProvider.tsx` — a
+  form field, a dialog banner or a whole-screen `ScreenMessage` already names what failed,
+  and a toast repeating it is a second copy somewhere less useful. What it is for is
+  everything that breaks while the user is looking elsewhere: a page query that fails on the
+  canvas, autosave stopping, a session ending. Pass a `key` so a repeating failure collapses
+  onto one row instead of stacking. Note `@ui-builder/runtime` has its own unrelated `Toast`
+  — that one is a page _action step_ and renders inside the canvas iframe.
 - **Role checks are shared.** `hasAtLeast` and `REQUIRES` live in `packages/schema` so the
   studio hides what the API would refuse. The server is still the enforcer.
 - **Saves carry `baseVersion` and may be refused.** The API bumps `Project.version` with a

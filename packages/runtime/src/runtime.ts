@@ -21,7 +21,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { runSteps } from './actions.js';
 import { createEvaluator, runStatements, type EvalRealm } from './evaluate.js';
 import { usePageOverlays, type OverlayRuntime } from './overlays.js';
-import { usePageQueries } from './queries.js';
+import { usePageQueries, type QueryFailureHandler } from './queries.js';
 import { usePageState } from './state.js';
 
 /**
@@ -68,6 +68,12 @@ export interface PageRuntimeOptions {
    * way the affected queries report why rather than failing silently.
    */
   integrations?: IntegrationCatalog;
+  /**
+   * Told when one of this page's queries fails against a real response. See
+   * `usePageQueries`; the studio uses it to say so, since nothing on a page being built
+   * has been bound to the error yet.
+   */
+  onQueryFailure?: QueryFailureHandler;
 }
 
 export interface PageRuntimeValue {
@@ -116,6 +122,7 @@ export function usePageRuntime({
   realm,
   onNavigate,
   integrations,
+  onQueryFailure,
 }: PageRuntimeOptions): PageRuntimeValue {
   const state = usePageState(page.state);
   const overlays = usePageOverlays();
@@ -133,7 +140,13 @@ export function usePageRuntime({
     [state.values, props, theme],
   );
 
-  const { scope, run } = usePageQueries(page.queries, makeScope, realm, integrations);
+  const { scope, run } = usePageQueries(
+    page.queries,
+    makeScope,
+    realm,
+    integrations,
+    onQueryFailure,
+  );
 
   const showToast = useCallback((message: string) => {
     const toast: Toast = { id: (toastCount += 1), message };

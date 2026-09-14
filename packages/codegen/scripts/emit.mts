@@ -7,7 +7,7 @@
  * `project.ts` going stale is exactly the kind of rot that is invisible until someone
  * downloads an export.
  *
- *   npx tsx packages/codegen/scripts/emit.mts <out-dir> [--doc demo|interactive|symbols|powerbi] [--zip <file>]
+ *   npx tsx packages/codegen/scripts/emit.mts <out-dir> [--doc demo|interactive|symbols|slots|powerbi] [--zip <file>]
  *
  * `--doc interactive` is the Phase 11 fixture — state, queries, handlers, a repeat and a
  * condition. It is the one that proves the generated *code* compiles rather than only the
@@ -40,6 +40,7 @@ import {
   interactiveDoc,
   powerbiDoc,
   powerbiIntegrations,
+  slotDoc,
   symbolDoc,
 } from '../src/fixtures.js';
 
@@ -49,6 +50,11 @@ const DOCS = {
   demo: { doc: demoDoc },
   interactive: { doc: interactiveDoc },
   symbols: { doc: symbolDoc },
+  // Slots are their own fixture rather than part of `symbols`, and they have to be their
+  // own entry here for the same reason: the three branches a slot takes — a fallback, a
+  // bare `{children}`, a placement that passes content — only differ in the *generated
+  // component's* signature, which is precisely what a snapshot cannot judge and `tsc` can.
+  slots: { doc: slotDoc },
   // The one fixture with connections behind it. A generator handed none drops the query
   // and warns, so omitting these would emit a page that compiles and fetches nothing.
   powerbi: { doc: powerbiDoc, integrations: powerbiIntegrations },

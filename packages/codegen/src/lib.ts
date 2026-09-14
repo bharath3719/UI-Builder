@@ -248,7 +248,14 @@ export interface QueryRequest {
 
 export interface QueryResult {
   loading: boolean;
-  data: unknown;
+  /**
+   * The payload, loose for the same reason \`list\`'s items are: it came out of a request
+   * whose shape nothing here knows, and the expressions written in the builder read it by
+   * name. \`unknown\` narrows nothing the author can widen from the builder — it only makes
+   * \`queries.rows.data.items\` a compile error in a project that renders correctly on the
+   * canvas, which is the one kind of divergence the export must not have.
+   */
+  data: any;
   error: string | undefined;
   /** Sends it now. Never rejects: a failure becomes error, which the page can render. */
   run: () => Promise<void>;

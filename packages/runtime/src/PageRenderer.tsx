@@ -52,6 +52,7 @@ import {
 } from './attributes.js';
 import { createEvaluator, type EvalRealm, type ExpressionError } from './evaluate.js';
 import { NodeErrorBoundary } from './NodeErrorBoundary.js';
+import type { QueryFailureHandler } from './queries.js';
 import { usePageRuntime, type PageRuntimeValue } from './runtime.js';
 import { Toasts } from './Toasts.js';
 
@@ -626,6 +627,8 @@ export interface PageRendererProps {
   onNavigate?: (to: string) => void;
   /** The workspace API connections this page may call. See `PageRuntimeOptions`. */
   integrations?: IntegrationCatalog;
+  /** Told when one of this page's queries fails. See `PageRuntimeOptions`. */
+  onQueryFailure?: QueryFailureHandler;
 }
 
 /**
@@ -651,8 +654,17 @@ function PageContents({
   realm,
   onNavigate,
   integrations,
+  onQueryFailure,
 }: PageRendererProps) {
-  const runtime = usePageRuntime({ page, theme, props, realm, onNavigate, integrations });
+  const runtime = usePageRuntime({
+    page,
+    theme,
+    props,
+    realm,
+    onNavigate,
+    integrations,
+    onQueryFailure,
+  });
   const previewed = cell?.nodeId ? page.nodes[cell.nodeId] : undefined;
 
   // The symbols' own rules first, then the page's — so an instance's override, which is a
