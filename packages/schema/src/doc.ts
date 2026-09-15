@@ -84,34 +84,65 @@ export const StyleSetSchema = z.record(z.string(), z.record(z.string(), StyleDec
  * — `state.count` is free-form text and nothing can rewrite it safely — which is why
  * the ids are used everywhere they can be.
  *
- * `openOverlay`/`closeOverlay` are deliberately absent: there are no overlay components
- * in the library yet, and a step kind the runtime cannot execute is one the editor would
- * happily let someone author. Adding a member later is not a migration, because no
- * stored document can contain one.
+ * `openOverlay`/`closeOverlay` name their target by **node id**, which is the third
+ * application of the same rule: an overlay renamed in the layers tree keeps every handler
+ * that opens it. They arrived with the overlay components that can execute them — the
+ * condition this comment used to record as the reason for their absence — and adding them
+ * was not a migration, because no stored document could contain one. `setFilter` arrived
+ * the same way and for the same reason, with the chart that gives it something to filter.
  */
 export type ActionStep =
   | { kind: 'setState'; stateId: string; value: PropValue }
   | { kind: 'toggleState'; stateId: string }
+  /**
+   * `setState`, except that writing the value a variable already holds clears it instead.
+   *
+   * The cross-filter step. Clicking a bar puts its category into state, every query whose
+   * text reads that state re-runs, and the chart is handed the category back as its
+   * `selected` — that much is `setState` and needs nothing new. What needs something new
+   * is the *second* click: filtering is the one write where repeating yourself means
+   * undoing, and a reader who cannot get back to the unfiltered page by clicking the bar
+   * again has to hunt for a control that clears it.
+   *
+   * Written as a step rather than left to the author, who could express it today as
+   * `{{ state.region === event.label ? '' : event.label }}` — a ternary naming the
+   * variable twice, once as a value and once through the step's own `stateId`, in every
+   * handler on every chart. The step is the same expression with the variable named once,
+   * and it is the one place where "what does a second click do" is decided rather than
+   * re-decided per handler.
+   *
+   * Cleared is the empty string, whatever the variable's declared type: a filter is a
+   * category, a category is text, and the emptiness a query's text tests for is `""`.
+   */
+  | { kind: 'setFilter'; stateId: string; value: PropValue }
   | { kind: 'runQuery'; queryId: string }
   | { kind: 'navigate'; to: PropValue }
   | { kind: 'showToast'; message: PropValue }
+  | { kind: 'openOverlay'; nodeId: NodeId }
+  | { kind: 'closeOverlay'; nodeId: NodeId }
   | { kind: 'custom'; code: string };
 
 export const ActionStepSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('setState'), stateId: z.string().min(1), value: PropValueSchema }),
   z.object({ kind: z.literal('toggleState'), stateId: z.string().min(1) }),
+  z.object({ kind: z.literal('setFilter'), stateId: z.string().min(1), value: PropValueSchema }),
   z.object({ kind: z.literal('runQuery'), queryId: z.string().min(1) }),
   z.object({ kind: z.literal('navigate'), to: PropValueSchema }),
   z.object({ kind: z.literal('showToast'), message: PropValueSchema }),
+  z.object({ kind: z.literal('openOverlay'), nodeId: z.string().min(1) }),
+  z.object({ kind: z.literal('closeOverlay'), nodeId: z.string().min(1) }),
   z.object({ kind: z.literal('custom'), code: z.string() }),
 ]);
 
 export const ACTION_KINDS = [
   'setState',
   'toggleState',
+  'setFilter',
   'runQuery',
   'navigate',
   'showToast',
+  'openOverlay',
+  'closeOverlay',
   'custom',
 ] as const satisfies readonly ActionStep['kind'][];
 
@@ -232,32 +263,181 @@ export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
 export type HttpMethod = (typeof HTTP_METHODS)[number];
 
 /**
- * An HTTP data source — PLAN.md §10. Read in an expression as `queries.<name>`, which
- * carries `{ loading, data, error }` rather than the payload alone: a list that has to
- * say "loading" cannot do it from the rows.
+ * A request written out in full, on the query itself.
  *
  * `url`, `body` and every header value are template source, so `{{ state.userId }}`
- * interpolates into any of them.
+ * interpolates into any of them. This was the only kind of query before workspace
+ * integrations existed, and it stays because it is the right shape for a one-off call
+ * that no other page will ever make.
  */
-export interface QueryDef {
-  id: string;
-  name: string;
+export interface UrlQuerySource {
+  kind: 'url';
   method: HttpMethod;
   url: string;
   headers?: Record<string, string>;
   body?: string;
-  runOnLoad: boolean;
 }
 
-export const QueryDefSchema: z.ZodType<QueryDef> = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
+/**
+ * A call on an endpoint the workspace has already defined.
+ *
+ * The method, path, headers and body live on the `ApiEndpoint` rather than here, which is
+ * the entire point: they are written once for the team and every page that binds to them
+ * follows when they change. What the *page* supplies is `variables` — a value for each
+ * `{{ hole }}` the endpoint declares, as template source evaluated in this page's scope.
+ * That is how `/users/{{ userId }}` becomes "the user this page is about".
+ *
+ * Referenced by id, not by name, for the reason every other cross-reference in this model
+ * is: renaming "Acme CRM" must not break every page that calls it.
+ *
+ * Note what is *not* here: the base URL, the auth scheme and the token. A document never
+ * carries a credential, so a revision, a publish or an exported zip cannot leak one.
+ */
+export interface IntegrationQuerySource {
+  kind: 'integration';
+  integrationId: string;
+  endpointId: string;
+  variables?: Record<string, string>;
+}
+
+/**
+ * A DAX query against a Power BI semantic model.
+ *
+ * The third source kind, and the one that is not an *endpoint*. A REST integration is a
+ * call somebody defined in workspace settings and a page picks from a list; a Power BI
+ * query is written on the page, because the DAX *is* the query — there is no useful
+ * "define it once for the team" level between a dataset and a statement, and inventing one
+ * would mean a settings screen visited once per chart.
+ *
+ * `integrationId` still points at a connection, and that is the whole of what it is for:
+ * the base URL, and the OAuth2 client credentials that mint the token. Everything about
+ * *which* data lives here.
+ *
+ * `dax`, `datasetId` and `groupId` are template source, evaluated in page scope — so
+ * `EVALUATE TOPN({{ state.limit }}, Sales)` is a dependency like any other, and the query
+ * re-runs when the state behind it changes. That is what makes a filter bar work with no
+ * wiring, and it is the hole a cross-filter drops values into: a `Chart`'s `onSelect` runs
+ * `setFilter`, the variable changes, and a query reading it re-sends itself. There is no
+ * bus, and the absence is the design — page state already is one.
+ *
+ * Interpolating a value into DAX is the same shape of hazard as interpolating one into a
+ * URL, and the same answer applies: what is interpolated is a value the page already has,
+ * against a credential that already has whatever access it has. It is worth knowing that a
+ * string arriving from a text box lands inside a query language — the panel says so.
+ */
+export interface PowerBiQuerySource {
+  kind: 'powerbi';
+  /** The connection that supplies the base URL and the credential. */
+  integrationId: string;
+  /** The semantic model (dataset) to query. Template source. */
+  datasetId: string;
+  /**
+   * The Power BI workspace the dataset sits in, or absent for "My workspace".
+   *
+   * Optional because the two produce genuinely different URLs rather than one being a
+   * default of the other, and a service principal — which is what client credentials
+   * means — cannot use My workspace at all. Template source.
+   */
+  groupId?: string;
+  /** The DAX statement. Template source. */
+  dax: string;
+}
+
+export type QuerySource = UrlQuerySource | IntegrationQuerySource | PowerBiQuerySource;
+
+/**
+ * An HTTP data source — PLAN.md §10. Read in an expression as `queries.<name>`, which
+ * carries `{ loading, data, error }` rather than the payload alone: a list that has to
+ * say "loading" cannot do it from the rows.
+ *
+ * The request lives under `source` as a discriminated union rather than as flat fields
+ * with an optional `endpointId` beside them. The flat version would leave a `url` and a
+ * `method` sitting on every integration query, meaning nothing and read by no one — the
+ * half-valid shape `migrateDoc` exists to prevent. Here, "which kind of request is this"
+ * is one check that every reader makes once.
+ */
+export interface QueryDef {
+  id: string;
+  name: string;
+  runOnLoad: boolean;
+  source: QuerySource;
+}
+
+/*
+ * Left un-annotated, unlike most schemas in this file: `z.discriminatedUnion` needs the
+ * inferred object type to find the discriminant, and a `z.ZodType<T>` annotation erases
+ * exactly that. The `satisfies` below keeps the hand-written type honest without hiding
+ * the shape from the union.
+ */
+export const UrlQuerySourceSchema = z.object({
+  kind: z.literal('url'),
   method: z.enum(HTTP_METHODS),
   url: z.string(),
   headers: z.record(z.string(), z.string()).optional(),
   body: z.string().optional(),
-  runOnLoad: z.boolean(),
 });
+
+export const IntegrationQuerySourceSchema = z.object({
+  kind: z.literal('integration'),
+  integrationId: z.string().min(1),
+  endpointId: z.string().min(1),
+  variables: z.record(z.string(), z.string()).optional(),
+});
+
+export const PowerBiQuerySourceSchema = z.object({
+  kind: z.literal('powerbi'),
+  integrationId: z.string().min(1),
+  datasetId: z.string(),
+  groupId: z.string().optional(),
+  dax: z.string(),
+});
+
+export const QuerySourceSchema = z.discriminatedUnion('kind', [
+  UrlQuerySourceSchema,
+  IntegrationQuerySourceSchema,
+  PowerBiQuerySourceSchema,
+]) satisfies z.ZodType<QuerySource>;
+
+export const QueryDefSchema: z.ZodType<QueryDef> = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  runOnLoad: z.boolean(),
+  source: QuerySourceSchema,
+});
+
+/**
+ * Every template a query carries, whatever kind it is.
+ *
+ * One function because three callers need the same answer and must not disagree about it:
+ * the expression collector (what does this page reference?), the cycle detector (does this
+ * query read its own result?), and the studio's rename warnings. Adding a third source
+ * kind means editing this and nothing else.
+ */
+export function querySourceTemplates(source: QuerySource): { path: string; source: string }[] {
+  if (source.kind === 'integration') {
+    return Object.entries(source.variables ?? {}).map(([name, value]) => ({
+      path: `variables.${name}`,
+      source: value,
+    }));
+  }
+
+  if (source.kind === 'powerbi') {
+    return [
+      { path: 'dax', source: source.dax },
+      { path: 'datasetId', source: source.datasetId },
+      ...(source.groupId === undefined ? [] : [{ path: 'groupId', source: source.groupId }]),
+    ];
+  }
+
+  return [
+    { path: 'url', source: source.url },
+    ...(source.body === undefined ? [] : [{ path: 'body', source: source.body }]),
+    ...Object.entries(source.headers ?? {}).map(([name, value]) => ({
+      path: `headers.${name}`,
+      source: value,
+    })),
+  ];
+}
 
 /**
  * A tree of nodes with a root — the unit every operation in `ops.ts` works on.
@@ -410,7 +590,7 @@ export function symbolIdOf(type: string): string | null {
 }
 
 /** Bumped whenever a change to these types needs a migration on load. */
-export const DOC_SCHEMA_VERSION = 3;
+export const DOC_SCHEMA_VERSION = 4;
 
 export interface ProjectDoc {
   schemaVersion: number;

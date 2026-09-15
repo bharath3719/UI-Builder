@@ -12,13 +12,16 @@
  */
 
 import { useId, useState } from 'react';
+import { Image as ImageIcon } from 'lucide-react';
 import type { PropSpec } from '@ui-builder/components';
 import { readProp, staticProp, type Json, type Node } from '@ui-builder/schema';
+import { AssetPicker } from './AssetPicker.js';
 import { ExpressionField } from '../expressions/ExpressionField.js';
 import { scopeSuggestions } from '../expressions/scope.js';
 import { useStudio } from '../state/context.js';
 import {
   ColorControl,
+  PaletteControl,
   Row,
   SelectControl,
   TextAreaControl,
@@ -79,7 +82,10 @@ function PropField({ node, spec }: { node: Node; spec: PropSpec }) {
       htmlFor={id}
       overridden={overridden}
       onReset={reset}
-      wide={spec.type === 'text' || bound}
+      // A palette is wide for a different reason than a textarea is: six wells and an add
+      // button do not fit the right-hand column, and wrapping them inside it would stack
+      // the cycle into two short rows that no longer read as an order.
+      wide={spec.type === 'text' || spec.type === 'data' || spec.type === 'palette' || bound}
       bind={{
         bound,
         onToggle: () => {
@@ -160,22 +166,81 @@ function PropField({ node, spec }: { node: Node; spec: PropSpec }) {
     );
   }
 
-  // 'text' is the multi-line string — a paragraph of copy, or the list of choices a
-  // Select is authored with. It gets a full-width row; a label does not need one.
-  if (spec.type === 'text') {
+  // A palette is several colours, and the control shows the component's own list behind
+  // whatever has been named — which is why the defaults come off the spec rather than
+  // out of this file. A disagreeing selection shows the plain unset row instead of one
+  // member's colours, for the reason every other field here shows nothing: a row of
+  // swatches holding one node's palette invites a click that would overwrite the rest.
+  if (spec.type === 'palette') {
+    return row(
+      <PaletteControl
+        id={id}
+        label={spec.label}
+        value={mixed ? '' : text}
+        swatches={spec.swatches ?? []}
+        tokens={Object.entries(theme.colors)}
+        onCommit={commit}
+      />,
+    );
+  }
+
+  // 'text' is the multi-line string — a paragraph of copy — and 'data' is the multi-line
+  // *series*, the rows or choices or numbers a component parses. They are authored the
+  // same way and differ only in what a binding is coerced to (`coerceToProp`), so they
+  // share a control. Both get a full-width row; a label does not need one.
+  if (spec.type === 'text' || spec.type === 'data') {
     return row(
       <TextAreaControl id={id} value={text} placeholder={placeholder} onCommit={commit} />,
     );
   }
 
-  return row(
-    <TextControl
-      id={id}
-      value={text}
-      placeholder={placeholder}
-      onCommit={commit}
-      monospace={spec.type === 'url'}
-    />,
+  // A URL prop is still a text field — an external address is a perfectly good answer and
+  // typing one must stay possible — with the project's own uploads offered beside it.
+  if (spec.type === 'url') {
+    return row(<UrlControl id={id} value={text} placeholder={placeholder} onCommit={commit} />);
+  }
+
+  return row(<TextControl id={id} value={text} placeholder={placeholder} onCommit={commit} />);
+}
+
+function UrlControl({
+  id,
+  value,
+  placeholder,
+  onCommit,
+}: {
+  id: string;
+  value: string;
+  placeholder: string | undefined;
+  onCommit: (text: string) => void;
+}) {
+  const { writable } = useStudio();
+  const [picking, setPicking] = useState(false);
+
+  return (
+    <div className={styles.urlField}>
+      <TextControl id={id} value={value} placeholder={placeholder} onCommit={onCommit} monospace />
+
+      <button
+        type="button"
+        className={styles.urlBrowse}
+        disabled={!writable}
+        title="Choose an uploaded image"
+        aria-label="Choose an uploaded image"
+        onClick={() => setPicking(true)}
+      >
+        <ImageIcon size={13} aria-hidden="true" />
+      </button>
+
+      <AssetPicker
+        open={picking}
+        onOpenChange={setPicking}
+        onPick={(url) => {
+          onCommit(url);
+          setPicking(false);
+        }}
+      />
+    </div>
   );
 }
 

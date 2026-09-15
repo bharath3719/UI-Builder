@@ -8,8 +8,9 @@ import {
   type SymbolDef,
 } from '@ui-builder/schema';
 import { describe, expect, it } from 'vitest';
+import { SLOT_TYPE } from './specs/Slot.js';
 import { createNodeFor, createProjectDoc, getSpec, searchSpecs, specFor } from './registry.js';
-import { createSymbol, symbolSpec } from './symbols.js';
+import { createSymbol, symbolAcceptsChildren, symbolSlotId, symbolSpec } from './symbols.js';
 
 function emptyDoc(): ProjectDoc {
   return createProjectDoc({ id: 'p', name: 'Site' });
@@ -27,8 +28,8 @@ describe('symbolSpec', () => {
     expect(spec.key).toBe(symbolType('sym'));
     expect(spec.displayName).toBe('Product card');
     expect(spec.category).toBe('Symbols');
-    // No slots and no interactions in this pass: what is inside an instance belongs to
-    // the symbol, so a drop into one would be a child of nothing.
+    // A component with no slot still refuses children: there would be nowhere to put
+    // them, so a drop onto one targets its parent exactly as it did before slots existed.
     expect(spec.acceptsChildren).toBe(false);
     expect(spec.events).toEqual([]);
     expect(spec.codegen.tag).toBe('ProductCard');
@@ -125,5 +126,35 @@ describe('createSymbol', () => {
     const held = addSymbol(emptyDoc(), createSymbol(emptyDoc(), { name: 'Card' }));
 
     expect(createSymbol(held, { name: 'Card' }).name).toBe('Card 2');
+  });
+});
+
+/** Slots — PLAN.md §12. */
+describe('a symbol with a slot', () => {
+  function withSlot(): SymbolDef {
+    const root = makeNode({ id: 'root', type: 'Box', name: 'Root', children: ['slot'] });
+    const slot = makeNode({ id: 'slot', type: SLOT_TYPE, name: 'Content', parentId: 'root' });
+    return makeSymbol({ id: 'sym', name: 'Panel', rootId: root.id, nodes: { root, slot } });
+  }
+
+  it('accepts children, so a placement can be filled rather than only configured', () => {
+    expect(symbolAcceptsChildren(withSlot())).toBe(true);
+    expect(symbolSpec(withSlot()).acceptsChildren).toBe(true);
+  });
+
+  it('says so by containing one rather than by carrying a flag', () => {
+    // Derived rather than stored, which is `symbolDependencies`' argument and the reason
+    // slots needed no migration: deleting the slot node has to be enough, and a flag left
+    // behind on the `SymbolDef` would be a component that still advertised a hole it no
+    // longer has.
+    expect(symbolSlotId(withSlot())).toBe('slot');
+    expect(symbolSlotId(card())).toBeNull();
+    expect(symbolAcceptsChildren(card())).toBe(false);
+  });
+
+  it('is offered only inside a component, and never on a page', () => {
+    // The palette is what enforces this (see `placeable`), and the flag is what it reads.
+    expect(getSpec(SLOT_TYPE)?.symbolOnly).toBe(true);
+    expect(getSpec('Box')?.symbolOnly).toBeUndefined();
   });
 });

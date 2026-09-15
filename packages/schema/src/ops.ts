@@ -293,7 +293,15 @@ export function moveNodes<T extends NodeTree>(
   return next;
 }
 
-/** Removes a node and everything under it. The root cannot be deleted. */
+/**
+ * Removes a node and everything under it, and with them every action step that opened or
+ * closed one of them. The root cannot be deleted.
+ *
+ * The cascade is `removeStateVar`'s, one level up: a `closeOverlay` naming a modal that is
+ * gone is a button that silently does nothing, and it is the deletion — not the next
+ * reader of the document — that knows the id has stopped meaning anything. It runs over
+ * the nodes that survive, so a handler inside the doomed subtree is not visited at all.
+ */
 export function deleteNode<T extends NodeTree>(tree: T, nodeId: NodeId): T {
   const node = getNode(tree, nodeId);
   if (node.parentId === null) fail('the root node cannot be deleted');
@@ -307,7 +315,11 @@ export function deleteNode<T extends NodeTree>(tree: T, nodeId: NodeId): T {
   const parent = getNode(tree, node.parentId);
   nodes[parent.id] = { ...parent, children: parent.children.filter((id) => id !== nodeId) };
 
-  return withNodes(tree, nodes);
+  return pruneSteps(
+    withNodes(tree, nodes),
+    (step) =>
+      (step.kind === 'openOverlay' || step.kind === 'closeOverlay') && doomed.has(step.nodeId),
+  );
 }
 
 export function reorder<T extends NodeTree>(
@@ -328,29 +340,39 @@ export function reorder<T extends NodeTree>(
 }
 
 /**
- * Deep-copies a subtree with fresh ids and drops it in directly after the original.
+ * A detached deep copy of a subtree, every node carrying a fresh id.
  *
- * `newId` is injectable so tests can assert on the resulting shape rather than on
- * whatever random ids the copy happened to get.
+ * Detached is the useful part: the copy belongs to no tree yet, so the same function
+ * serves duplicating a node in place, lifting one out into a component of its own
+ * (`symbolFromSelection`), and the clipboard. The ids have to be new wherever it lands,
+ * because a node id becomes a CSS class name (`nodeClassName`) and two nodes sharing one
+ * would share their styling.
+ *
+ * The root of the copy has `parentId: null`, which every caller overwrites as it inserts.
+ *
+ * `newId` is injectable so tests can assert on the resulting shape rather than on whatever
+ * random ids the copy happened to get.
  */
-export function duplicateNode<T extends NodeTree>(
-  tree: T,
+export function copySubtree(
+  tree: NodeTree,
   nodeId: NodeId,
   newId: () => NodeId = createNodeId,
-): T {
-  const node = getNode(tree, nodeId);
-  if (node.parentId === null) fail('the root node cannot be duplicated');
-
+): { nodes: Node[]; rootId: NodeId } {
   const idMap = new Map<NodeId, NodeId>();
   for (const id of [nodeId, ...descendantIds(tree, nodeId)]) idMap.set(id, newId());
 
-  const copies: Node[] = [];
+  const rootId = idMap.get(nodeId);
+  if (rootId === undefined) fail('the copy lost its own root');
+
+  const nodes: Node[] = [];
   for (const [oldId, freshId] of idMap) {
     const source = getNode(tree, oldId);
-    copies.push({
+    nodes.push({
       ...source,
       id: freshId,
-      parentId: source.parentId ? (idMap.get(source.parentId) ?? source.parentId) : null,
+      // A parent outside the copied subtree is not part of the copy, so the root is
+      // detached rather than left pointing at a node the caller may not have.
+      parentId: source.parentId ? (idMap.get(source.parentId) ?? null) : null,
       children: source.children.map((child) => idMap.get(child) ?? child),
       props: { ...source.props },
       styles: cloneJson(source.styles),
@@ -362,12 +384,25 @@ export function duplicateNode<T extends NodeTree>(
     });
   }
 
+  return { nodes, rootId };
+}
+
+/**
+ * Deep-copies a subtree with fresh ids and drops it in directly after the original.
+ */
+export function duplicateNode<T extends NodeTree>(
+  tree: T,
+  nodeId: NodeId,
+  newId: () => NodeId = createNodeId,
+): T {
+  const node = getNode(tree, nodeId);
+  if (node.parentId === null) fail('the root node cannot be duplicated');
+
+  const { nodes, rootId } = copySubtree(tree, nodeId, newId);
   const parent = getNode(tree, node.parentId);
-  const rootId = idMap.get(nodeId);
-  if (rootId === undefined) fail('duplicate lost its own root');
 
   return insertSubtree(tree, {
-    nodes: copies,
+    nodes,
     rootId,
     parentId: parent.id,
     index: parent.children.indexOf(nodeId) + 1,
@@ -640,7 +675,9 @@ export function removeStateVar(page: Page, id: string): Page {
 
   const pruned = pruneSteps(
     page,
-    (step) => (step.kind === 'setState' || step.kind === 'toggleState') && step.stateId === id,
+    (step) =>
+      (step.kind === 'setState' || step.kind === 'toggleState' || step.kind === 'setFilter') &&
+      step.stateId === id,
   );
 
   return { ...pruned, state: pruned.state.filter((variable) => variable.id !== id) };
@@ -665,11 +702,10 @@ export function createQuery(
       page.queries.map((query) => query.name),
       init.name ?? 'query',
     ),
-    method: init.method ?? 'GET',
-    url: init.url ?? '',
-    ...(init.headers === undefined ? {} : { headers: init.headers }),
-    ...(init.body === undefined ? {} : { body: init.body }),
     runOnLoad: init.runOnLoad ?? true,
+    // A plain URL query is what "new query" means: an integration one cannot be created
+    // without first choosing a connection, which is a decision the panel makes, not this.
+    source: init.source ?? { kind: 'url', method: 'GET', url: '' },
   };
 }
 

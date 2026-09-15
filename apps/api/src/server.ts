@@ -1,7 +1,14 @@
 import { buildApp } from './app.js';
-import { env } from './env.js';
+import { env, environmentWarnings } from './env.js';
 
 const app = await buildApp();
+
+// Before listening, so they are the first thing in the log rather than buried under the
+// first minute of traffic. `warn` and not `error`: each of these is a legitimate
+// development setting, and none of them should stop a server that is otherwise working.
+for (const warning of environmentWarnings()) {
+  app.log.warn(warning);
+}
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {

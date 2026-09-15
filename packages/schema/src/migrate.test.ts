@@ -198,3 +198,91 @@ describe('2 -> 3: reusable user components', () => {
     expect(migrateDoc(raw).pages).toEqual(before);
   });
 });
+
+describe('3 -> 4: a query names its request kind', () => {
+  /** A document as Phase 12 stored it: queries with flat `method`/`url` fields. */
+  function schema3(queries: unknown[]): Record<string, unknown> {
+    const doc = cloneJson(makeDoc()) as unknown as {
+      schemaVersion: number;
+      pages: { queries: unknown[] }[];
+    };
+    doc.schemaVersion = 3;
+    doc.pages[0]!.queries = queries;
+    return doc as unknown as Record<string, unknown>;
+  }
+
+  const flat = {
+    id: 'q1',
+    name: 'users',
+    method: 'POST',
+    url: '/api/users?q={{ state.search }}',
+    headers: { 'X-Tenant': 'acme' },
+    body: '{"a":1}',
+    runOnLoad: true,
+  };
+
+  it('moves the request under `source` and keeps every part of it', () => {
+    const migrated = migrateDoc(schema3([flat]));
+
+    expect(migrated.schemaVersion).toBe(DOC_SCHEMA_VERSION);
+    expect(migrated.pages[0]?.queries[0]).toEqual({
+      id: 'q1',
+      name: 'users',
+      runOnLoad: true,
+      source: {
+        kind: 'url',
+        method: 'POST',
+        url: '/api/users?q={{ state.search }}',
+        headers: { 'X-Tenant': 'acme' },
+        body: '{"a":1}',
+      },
+    });
+  });
+
+  /** Absent optional fields must stay absent — see the ops test that asserts the same. */
+  it('does not invent headers or a body that were never there', () => {
+    const migrated = migrateDoc(
+      schema3([{ id: 'q1', name: 'users', method: 'GET', url: '/u', runOnLoad: false }]),
+    );
+    const source = migrated.pages[0]?.queries[0]?.source;
+
+    expect(source).toEqual({ kind: 'url', method: 'GET', url: '/u' });
+    expect(source && 'headers' in source).toBe(false);
+    expect(source && 'body' in source).toBe(false);
+  });
+
+  it('defaults a missing method rather than dropping the query', () => {
+    const migrated = migrateDoc(schema3([{ id: 'q1', name: 'users', url: '/u', runOnLoad: true }]));
+
+    expect(migrated.pages[0]?.queries[0]?.source).toMatchObject({ kind: 'url', method: 'GET' });
+  });
+
+  /**
+   * One malformed row must not make a whole project un-openable — `ProjectDocSchema` runs
+   * after every migration, so a query that cannot be read has to go rather than fail it.
+   */
+  it('drops a query it cannot read instead of failing the document', () => {
+    const migrated = migrateDoc(schema3([flat, { id: 'q2', name: 'broken', runOnLoad: true }]));
+
+    expect(migrated.pages[0]?.queries).toHaveLength(1);
+    expect(migrated.pages[0]?.queries[0]?.id).toBe('q1');
+  });
+
+  it('leaves a query that already names its source alone', () => {
+    const already = {
+      id: 'q1',
+      name: 'users',
+      runOnLoad: true,
+      source: { kind: 'integration', integrationId: 'int1', endpointId: 'ep1' },
+    };
+
+    expect(migrateDoc(schema3([already])).pages[0]?.queries[0]).toEqual(already);
+  });
+
+  it('changes nothing else about the page', () => {
+    const raw = schema3([flat]) as { pages: { nodes: unknown; state: unknown }[] };
+    const before = cloneJson(raw.pages[0]!.nodes);
+
+    expect(migrateDoc(raw).pages[0]?.nodes).toEqual(before);
+  });
+});

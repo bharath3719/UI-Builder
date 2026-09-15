@@ -6,6 +6,8 @@
 
 export { PageRenderer, type PageRendererProps } from './PageRenderer.js';
 export {
+  CANVAS_CURSOR_CSS,
+  DRAG_READY_ATTRIBUTE,
   NODE_ID_ATTRIBUTE,
   NODE_ERROR_ATTRIBUTE,
   NODE_INACTIVE_ATTRIBUTE,
@@ -32,6 +34,8 @@ export {
   cyclicQueries,
   usePageQueries,
   type PageQueries,
+  type QueryFailure,
+  type QueryFailureHandler,
   type QueryRequest,
 } from './queries.js';
 export { usePageRuntime, type PageRuntimeValue, type Toast } from './runtime.js';

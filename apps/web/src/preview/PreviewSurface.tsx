@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
-import { PageRenderer } from '@ui-builder/runtime';
+import { PageRenderer, type QueryFailureHandler } from '@ui-builder/runtime';
+import { useIntegrationCatalog } from '../api/useIntegrationCatalog.js';
 import type { Page, SymbolDef, Theme } from '@ui-builder/schema';
 import { CanvasFrame } from '../studio/canvas/CanvasFrame.js';
 import type { DevicePreset } from './devices.js';
@@ -29,6 +30,8 @@ export function PreviewSurface({
   title = 'Preview',
   bare = false,
   onOpenPath,
+  workspaceId,
+  onQueryFailure,
 }: {
   page: Page;
   /** The document's reusable components, without which every instance is an unknown box. */
@@ -40,13 +43,34 @@ export function PreviewSurface({
   /** Drops the surrounding padding — the shared page is the design, edge to edge. */
   bare?: boolean;
   /**
+   * The workspace whose API connections this page's queries may call.
+   *
+   * Omitted by the *shared* page, and that is a limitation rather than an oversight: a
+   * shared link is public, and building the catalogue means handing this workspace's
+   * tokens to whoever opens it. So a published page runs its plain-URL queries and reports
+   * that its integration queries have no connection available. Closing that properly means
+   * a server-side proxy, which is the call path this product did not take.
+   */
+  workspaceId?: string;
+  /**
    * A link in the design pointing at a page path. Left off, such a link does nothing —
    * the interception still happens either way, because what it prevents is the frame
    * navigating to the studio (see `useDesignLinks`).
    */
   onOpenPath?: (path: string) => void;
+  /**
+   * Told when one of the page's queries fails.
+   *
+   * A prop rather than a toast raised from in here, because this surface serves two
+   * audiences. In the preview route it is the author checking their own work and a failed
+   * query is exactly what they came to find out about; at `/s/:slug` it is a stranger who
+   * did not build this page, cannot fix it, and should not be shown its plumbing. The
+   * route decides, and the shared one passes nothing.
+   */
+  onQueryFailure?: QueryFailureHandler;
 }) {
   const fits = device.width === null;
+  const integrations = useIntegrationCatalog(workspaceId);
   const [doc, setDoc] = useState<Document | null>(null);
   const onDocument = useCallback((next: Document | null) => setDoc(next), []);
 
@@ -67,11 +91,13 @@ export function PreviewSurface({
             page={page}
             symbols={symbols}
             theme={theme}
+            integrations={integrations}
             realm={doc?.defaultView ?? null}
             // A `navigate` action and a click on a link are the same request, so they
             // get the same answer: the host decides what a path means, and without one
             // the frame would navigate to the studio (`useDesignLinks`).
             onNavigate={onOpenPath}
+            onQueryFailure={onQueryFailure}
           />
         </CanvasFrame>
       </div>

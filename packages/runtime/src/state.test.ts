@@ -78,6 +78,38 @@ describe('stateReducer', () => {
     expect(twice).toEqual({ [FLAG.id]: false });
   });
 
+  it('filters to the category picked, and clears when it is picked again', () => {
+    // The second click is the clear, which is what makes a cross-filter undoable without a
+    // control of its own to hunt for.
+    const once = stateReducer({}, { kind: 'filter', id: COUNT.id, initial: '', value: 'North' });
+    const twice = stateReducer(once, {
+      kind: 'filter',
+      id: COUNT.id,
+      initial: '',
+      value: 'North',
+    });
+
+    expect(once).toEqual({ [COUNT.id]: 'North' });
+    expect(twice).toEqual({ [COUNT.id]: '' });
+  });
+
+  it('compares as text, so a number typed in and one clicked are the same filter', () => {
+    // A category is text wherever it came from, and what a query's own text tests for
+    // emptiness on is the empty string — whatever the variable's declared type.
+    expect(
+      stateReducer({}, { kind: 'filter', id: COUNT.id, initial: 2024, value: '2024' }),
+    ).toEqual({ [COUNT.id]: '' });
+  });
+
+  it('reads the filter it is comparing against from the store, not from the initial', () => {
+    // The reason this is a reducer rather than a read-then-write in the interpreter: a
+    // step running beside another write cannot see what that write did.
+    const held: StateOverrides = { [COUNT.id]: 'South' };
+    expect(
+      stateReducer(held, { kind: 'filter', id: COUNT.id, initial: '', value: 'South' }),
+    ).toEqual({ [COUNT.id]: '' });
+  });
+
   it('toggles with the truthiness rule the rest of the runtime uses', () => {
     // `isTruthy`: an empty array is falsy, a non-empty one is not.
     expect(stateReducer({}, { kind: 'toggle', id: ROWS.id, initial: [] })).toEqual({

@@ -1,6 +1,7 @@
 import {
   DEFAULT_THEME,
   exprProp,
+  makeNode,
   makePage,
   staticProp,
   type ActionScope,
@@ -25,7 +26,14 @@ function pageWith(): Page {
       { id: COUNT, name: 'count', type: 'number', initial: 0 },
       { id: FLAG, name: 'flag', type: 'boolean', initial: false },
     ],
-    queries: [{ id: USERS, name: 'users', method: 'GET', url: '/api/users', runOnLoad: false }],
+    queries: [
+      {
+        id: USERS,
+        name: 'users',
+        runOnLoad: false,
+        source: { kind: 'url', method: 'GET', url: '/api/users' },
+      },
+    ],
   });
 }
 
@@ -45,6 +53,7 @@ function hostFor(scope: Partial<ActionScope> = {}) {
     }),
     setState: (id, value) => log.push(`setState ${id}=${JSON.stringify(value)}`),
     toggleState: (id) => log.push(`toggleState ${id}`),
+    setFilter: (id, value) => log.push(`setFilter ${id}=${value}`),
     runQuery: async (id) => {
       log.push(`runQuery:start ${id}`);
       await Promise.resolve();
@@ -52,6 +61,8 @@ function hostFor(scope: Partial<ActionScope> = {}) {
     },
     navigate: (to) => log.push(`navigate ${to}`),
     toast: (message) => log.push(`toast ${message}`),
+    openOverlay: (nodeId) => log.push(`openOverlay ${nodeId}`),
+    closeOverlay: (nodeId) => log.push(`closeOverlay ${nodeId}`),
     runCode: (code) => log.push(`runCode ${code}`),
     report: (message) => reports.push(message),
   };
@@ -123,12 +134,25 @@ describe('runSteps', () => {
     expect(log).toEqual([`toggleState ${FLAG}`]);
   });
 
+  it('filters on a variable, handing the host the category as text', async () => {
+    // The comparison and the clearing are the store's, not this interpreter's: what a
+    // second click has to compare against is what was written, which a step running beside
+    // another write cannot see. Same division as `toggleState`.
+    const { host, log } = hostFor({ event: { label: 'North' } });
+    await runSteps(
+      [{ kind: 'setFilter', stateId: COUNT, value: exprProp('{{ event.label }}') }],
+      host,
+    );
+    expect(log).toEqual([`setFilter ${COUNT}=North`]);
+  });
+
   it('reports a step pointing at a variable that is gone, and does nothing', async () => {
     const { host, log, reports } = hostFor();
     await runSteps(
       [
         { kind: 'setState', stateId: 'deleted', value: staticProp(1) },
         { kind: 'toggleState', stateId: 'deleted' },
+        { kind: 'setFilter', stateId: 'deleted', value: staticProp('x') },
       ],
       host,
     );
@@ -137,6 +161,7 @@ describe('runSteps', () => {
     expect(reports).toEqual([
       'sets a variable that no longer exists',
       'toggles a variable that no longer exists',
+      'filters on a variable that no longer exists',
     ]);
   });
 
@@ -178,6 +203,36 @@ describe('runSteps', () => {
     const { host, log } = hostFor({ state: { count: 3 } });
     await runSteps([{ kind: 'showToast', message: exprProp('{{ state.count }} left') }], host);
     expect(log).toEqual(['toast 3 left']);
+  });
+
+  it('opens and closes an overlay by node id', async () => {
+    const { host, log } = hostFor();
+    host.page = makePage({
+      id: 'p1',
+      rootId: 'n1',
+      nodes: { n1: makeNode({ id: 'n1', parentId: null, type: 'Modal', name: 'Dialog' }) },
+    });
+
+    await runSteps(
+      [
+        { kind: 'openOverlay', nodeId: 'n1' },
+        { kind: 'closeOverlay', nodeId: 'n1' },
+      ],
+      host,
+    );
+
+    expect(log).toEqual(['openOverlay n1', 'closeOverlay n1']);
+  });
+
+  it('reports an overlay that is gone, and does nothing', async () => {
+    // The same bargain the other cascades strike: `deleteNode` takes these steps with the
+    // node, so reaching this means a document that arrived with one — and a handler that
+    // silently did nothing would be worse than one that says why.
+    const { host, log, reports } = hostFor();
+    await runSteps([{ kind: 'closeOverlay', nodeId: 'gone' }], host);
+
+    expect(log).toEqual([]);
+    expect(reports).toEqual(['closes an overlay that no longer exists']);
   });
 
   it('runs a custom step as statements', async () => {

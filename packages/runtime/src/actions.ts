@@ -27,9 +27,13 @@ export interface ActionHost {
   evaluate: EvaluateExpression;
   setState: (id: string, value: Json) => void;
   toggleState: (id: string) => void;
+  /** Writes the category, or clears it when the variable already holds it. */
+  setFilter: (id: string, value: string) => void;
   runQuery: (id: string) => Promise<void>;
   navigate: (to: string) => void;
   toast: (message: string) => void;
+  openOverlay: (nodeId: string) => void;
+  closeOverlay: (nodeId: string) => void;
   runCode: (code: string) => void;
   /** Said out loud rather than thrown — a broken handler must not take the page down. */
   report: (message: string) => void;
@@ -85,6 +89,19 @@ async function runStep(step: ActionStep, host: ActionHost): Promise<void> {
       return;
     }
 
+    case 'setFilter': {
+      if (!host.page.state.some((variable) => variable.id === step.stateId)) {
+        host.report('filters on a variable that no longer exists');
+        return;
+      }
+      // Through the host rather than read-then-write here, for `toggleState`'s reason: the
+      // value it compares against has to come from the store, not from the scope this
+      // handler was called with. Two filter steps in one handler then both land, and the
+      // exported handler — which reads `current` inside the updater — does the same.
+      host.setFilter(step.stateId, textOf(step.value, host.evaluate));
+      return;
+    }
+
     case 'runQuery': {
       if (!host.page.queries.some((query) => query.id === step.queryId)) {
         host.report('runs a query that no longer exists');
@@ -109,6 +126,23 @@ async function runStep(step: ActionStep, host: ActionHost): Promise<void> {
 
     case 'showToast': {
       host.toast(textOf(step.message, host.evaluate));
+      return;
+    }
+
+    case 'openOverlay':
+    case 'closeOverlay': {
+      // Existence only. Whether the node is an *overlay* is settled where the step is
+      // authored — the action editor lists nothing else — and re-deciding it here would
+      // mean the interpreter reading the component registry, which is the dependency
+      // `schema` and this file are arranged to avoid.
+      if (!host.page.nodes[step.nodeId]) {
+        host.report(
+          `${step.kind === 'openOverlay' ? 'opens' : 'closes'} an overlay that no longer exists`,
+        );
+        return;
+      }
+      if (step.kind === 'openOverlay') host.openOverlay(step.nodeId);
+      else host.closeOverlay(step.nodeId);
       return;
     }
 

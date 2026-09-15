@@ -270,7 +270,12 @@ describe('handlers', () => {
       type: 'Button',
       name: 'Reload',
       queries: [
-        { id: 'q1', name: 'people', method: 'GET', url: 'https://x.test/p', runOnLoad: false },
+        {
+          id: 'q1',
+          name: 'people',
+          runOnLoad: false,
+          source: { kind: 'url', method: 'GET', url: 'https://x.test/p' },
+        },
       ],
       events: { onClick: [{ kind: 'runQuery', queryId: 'q1' }] },
     });
@@ -296,7 +301,12 @@ describe('repeat and showIf', () => {
         },
       },
       queries: [
-        { id: 'q1', name: 'people', method: 'GET', url: 'https://x.test/p', runOnLoad: true },
+        {
+          id: 'q1',
+          name: 'people',
+          runOnLoad: true,
+          source: { kind: 'url', method: 'GET', url: 'https://x.test/p' },
+        },
       ],
     });
 
@@ -345,9 +355,8 @@ describe('queries', () => {
         {
           id: 'q1',
           name: 'people',
-          method: 'GET',
-          url: 'https://x.test/p?q={{ state.q }}',
           runOnLoad: true,
+          source: { kind: 'url', method: 'GET', url: 'https://x.test/p?q={{ state.q }}' },
         },
       ],
     });
@@ -368,9 +377,12 @@ describe('queries', () => {
         {
           id: 'q1',
           name: 'people',
-          method: 'GET',
-          url: 'https://x.test/p?after={{ queries.people.data }}',
           runOnLoad: true,
+          source: {
+            kind: 'url',
+            method: 'GET',
+            url: 'https://x.test/p?after={{ queries.people.data }}',
+          },
         },
       ],
     });
@@ -383,7 +395,12 @@ describe('queries', () => {
       type: 'Text',
       props: { text: 'Hi' },
       queries: [
-        { id: 'q1', name: 'ping', method: 'GET', url: 'https://x.test/ping', runOnLoad: true },
+        {
+          id: 'q1',
+          name: 'ping',
+          runOnLoad: true,
+          source: { kind: 'url', method: 'GET', url: 'https://x.test/ping' },
+        },
       ],
     });
 
@@ -392,20 +409,141 @@ describe('queries', () => {
   });
 });
 
-describe('what the export cannot carry', () => {
-  test('a bound option list exports empty, and says so', () => {
-    // The transform's *shape* is the text it parses, which is why it is a transform at all
-    // (`emit.ts`). Making it dynamic means shipping its parser and writing its markup a
-    // second time; a silently empty `<select>` is the failure this warning exists to avoid.
+describe('overlays', () => {
+  /** A page with a modal and a button wired to open it. */
+  const withModal = (events: Record<string, ActionStep[]>, props: Record<string, unknown> = {}) =>
+    tsxOf({
+      children: {
+        opener: { type: 'Button', name: 'Open', events },
+        dialog: { type: 'Modal', name: 'Delete dialog', props: { open: false, ...props } },
+      },
+    });
+
+  test('the panel is page state, seeded from the prop, and the markup reads it', () => {
+    const tsx = withModal({});
+
+    // Seeded from `open` rather than hard-coded: the document says where it starts, and
+    // the page says where it is now — which is the same split `overlays.ts` makes on the
+    // canvas, so the export opens in the state the preview did.
+    expect(tsx).toContain('const [overlays, setOverlays] = useState({ deleteDialog: false });');
+    expect(tsx).toContain('open={overlays.deleteDialog}');
+  });
+
+  test('a step names the panel by the layer name, not by the node id', () => {
+    // `handlerName`'s rule: someone reading the exported page should be able to tell which
+    // dialog this is. Ids are opaque; the name is what the author typed in the tree.
+    const tsx = withModal({ onClick: [{ kind: 'openOverlay', nodeId: 'dialog' }] });
+
+    expect(tsx).toContain('setOverlays((current) => ({ ...current, deleteDialog: true }));');
+    expect(tsx).not.toContain('dialog:');
+  });
+
+  test('the updater form, so two steps in one handler both land', () => {
+    // `toggleState`'s reason: reading the render's object would make the second step
+    // overwrite the first, and a handler that closes one panel and opens another is the
+    // ordinary case rather than an exotic one.
+    const tsx = tsxOf({
+      children: {
+        opener: {
+          type: 'Button',
+          name: 'Swap',
+          events: {
+            onClick: [
+              { kind: 'closeOverlay', nodeId: 'first' },
+              { kind: 'openOverlay', nodeId: 'second' },
+            ],
+          },
+        },
+        first: { type: 'Modal', name: 'First' },
+        second: { type: 'Drawer', name: 'Second' },
+      },
+    });
+
+    expect(tsx).toContain('...current, first: false');
+    expect(tsx).toContain('...current, second: true');
+  });
+
+  test('every panel gets a way out, whether or not anything opens it', () => {
+    // The close button and the backdrop are marked in the template; this is what turns
+    // that mark into a dismissal. Without it a modal opened by a step could never be shut.
+    expect(withModal({})).toContain(
+      'onClose={() => setOverlays((current) => ({ ...current, deleteDialog: false }))}',
+    );
+  });
+
+  test('a page with no overlay declares none', () => {
+    // `usedStyles`' rule: an unused binding is a compile error in the generated project,
+    // and every page that has never seen a modal must still export as it always did.
+    const tsx = tsxOf({ type: 'Button', name: 'Plain' });
+
+    expect(tsx).not.toContain('setOverlays');
+    expect(tsx).not.toContain('useState');
+  });
+
+  test('a step naming something that is not an overlay is dropped, and says so', () => {
     const { tsx, warnings } = generatePage(
-      pageOf({ type: 'Select', name: 'Choice', bound: { options: '{{ state.options }}' } }),
+      pageOf({
+        children: {
+          opener: {
+            type: 'Button',
+            name: 'Open',
+            events: { onClick: [{ kind: 'openOverlay', nodeId: 'root' }] },
+          },
+        },
+      }),
       DEFAULT_THEME,
     );
 
-    expect(tsx).not.toContain('<option');
-    expect(warnings[0]).toContain('the option list is built from "options"');
+    expect(tsx).not.toContain('setOverlays');
+    expect(warnings[0]).toContain('opens an overlay that is not on this page');
+  });
+});
+
+describe('a bound option list', () => {
+  /**
+   * This used to be in "what the export cannot carry", asserting an empty `<select>` and a
+   * warning: the transform's shape is the text it parses, so a bound source had nothing to
+   * parse. What changed is that the shape does not actually depend on the text — every
+   * item becomes one `<option>` — so the generator can write the map and let the run time
+   * supply the items, the same way the table body now does.
+   */
+  test('exports as a map, so the dropdown really is filled by the query', () => {
+    const { tsx, warnings } = generatePage(
+      pageOf({ type: 'Select', name: 'Choice', bound: { options: '{{ queries.people.data }}' } }),
+      DEFAULT_THEME,
+    );
+
+    expect(tsx).toContain("options(queries.people.data, '', '')");
+    expect(tsx).toContain('<option key={option.value} value={option.value}>');
+    expect(warnings).toEqual([]);
   });
 
+  test('passes the named fields through, for data that does not use the usual keys', () => {
+    const { tsx } = generatePage(
+      pageOf({
+        type: 'Select',
+        name: 'Choice',
+        props: { valueField: 'code', labelField: 'title' },
+        bound: { options: '{{ queries.people.data }}' },
+      }),
+      DEFAULT_THEME,
+    );
+
+    expect(tsx).toContain("options(queries.people.data, 'code', 'title')");
+  });
+
+  test('a typed list is still expanded while generating, with no helper at all', () => {
+    const { tsx } = generatePage(
+      pageOf({ type: 'Select', name: 'Choice', props: { options: 'a | A\nb | B' } }),
+      DEFAULT_THEME,
+    );
+
+    expect(tsx).toContain('<option value="a">A</option>');
+    expect(tsx).not.toContain('options(');
+  });
+});
+
+describe('what the export cannot carry', () => {
   test('a bound element name exports as its fallback, and says so', () => {
     const { tsx, warnings } = generatePage(
       pageOf({ type: 'Heading', name: 'Title', bound: { level: '{{ state.level }}' } }),
@@ -425,8 +563,11 @@ describe('the interactive project', () => {
     expect(files.map((file) => file.path)).toContain('src/lib/query.ts');
     expect(files.map((file) => file.path)).toContain('src/lib/toast.tsx');
     expect(files.map((file) => file.path)).toContain('src/lib/navigate.ts');
-    // Nothing on it drags a table row.
-    expect(files.map((file) => file.path)).not.toContain('src/components/SortableRows.tsx');
+    // The roster's rows reorder, so the component that drags them ships with it. It is
+    // asserted rather than assumed because the rule these files follow is "only what a
+    // page actually reached for" — a project that shipped it for a table with no grips
+    // would be quietly carrying dead code.
+    expect(files.map((file) => file.path)).toContain('src/components/SortableRows.tsx');
   });
 
   test('exports without a warning', () => {

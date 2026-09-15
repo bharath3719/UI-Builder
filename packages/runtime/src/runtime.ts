@@ -9,6 +9,7 @@
 
 import type {
   ActionStep,
+  IntegrationCatalog,
   Json,
   Node,
   Page,
@@ -19,7 +20,8 @@ import type {
 import { useCallback, useMemo, useState } from 'react';
 import { runSteps } from './actions.js';
 import { createEvaluator, runStatements, type EvalRealm } from './evaluate.js';
-import { usePageQueries } from './queries.js';
+import { usePageOverlays, type OverlayRuntime } from './overlays.js';
+import { usePageQueries, type QueryFailureHandler } from './queries.js';
 import { usePageState } from './state.js';
 
 /**
@@ -57,11 +59,28 @@ export interface PageRuntimeOptions {
   realm?: EvalRealm | null;
   /** What a `navigate` step means to the host. See `navigateTo`. */
   onNavigate?: (to: string) => void;
+  /**
+   * The workspace API connections this page's queries may call, with their credentials.
+   *
+   * Supplied by the host — the studio, the preview, a published page — and deliberately
+   * not read from the document, which carries none. Omitted means none are available,
+   * which is both "still loading" and "this viewer's role may not read tokens"; either
+   * way the affected queries report why rather than failing silently.
+   */
+  integrations?: IntegrationCatalog;
+  /**
+   * Told when one of this page's queries fails against a real response. See
+   * `usePageQueries`; the studio uses it to say so, since nothing on a page being built
+   * has been bound to the error yet.
+   */
+  onQueryFailure?: QueryFailureHandler;
 }
 
 export interface PageRuntimeValue {
   scope: RenderScope;
   toasts: readonly Toast[];
+  /** Which overlays are on screen, and the two steps that change that. */
+  overlays: OverlayRuntime;
   dispatch: (
     node: Node,
     event: string,
@@ -102,8 +121,11 @@ export function usePageRuntime({
   props,
   realm,
   onNavigate,
+  integrations,
+  onQueryFailure,
 }: PageRuntimeOptions): PageRuntimeValue {
   const state = usePageState(page.state);
+  const overlays = usePageOverlays();
   const [toasts, setToasts] = useState<readonly Toast[]>([]);
 
   // Passed *into* the queries hook rather than built around it: the scope contains the
@@ -118,7 +140,13 @@ export function usePageRuntime({
     [state.values, props, theme],
   );
 
-  const { scope, run } = usePageQueries(page.queries, makeScope, realm);
+  const { scope, run } = usePageQueries(
+    page.queries,
+    makeScope,
+    realm,
+    integrations,
+    onQueryFailure,
+  );
 
   const showToast = useCallback((message: string) => {
     const toast: Toast = { id: (toastCount += 1), message };
@@ -152,15 +180,32 @@ export function usePageRuntime({
         evaluate,
         setState: state.setValue,
         toggleState: state.toggle,
+        setFilter: state.filter,
         runQuery: run,
         navigate: (to) => navigateTo(to, onNavigate),
         toast: showToast,
+        openOverlay: overlays.open,
+        closeOverlay: overlays.close,
         runCode: (code) => runStatements(code, actionScope, realm),
         report,
       });
     },
-    [page, state.setValue, state.toggle, run, realm, onNavigate, showToast],
+    [
+      page,
+      state.setValue,
+      state.toggle,
+      state.filter,
+      run,
+      realm,
+      onNavigate,
+      showToast,
+      overlays.open,
+      overlays.close,
+    ],
   );
 
-  return useMemo(() => ({ scope, toasts, dispatch }), [scope, toasts, dispatch]);
+  return useMemo(
+    () => ({ scope, toasts, overlays, dispatch }),
+    [scope, toasts, overlays, dispatch],
+  );
 }

@@ -11,7 +11,14 @@ function pageWith(): Page {
       { id: 'sv1', name: 'count', type: 'number', initial: 0 },
       { id: 'sv2', name: 'search', type: 'string', initial: '' },
     ],
-    queries: [{ id: 'q1', name: 'users', method: 'GET', url: '/api/users', runOnLoad: true }],
+    queries: [
+      {
+        id: 'q1',
+        name: 'users',
+        runOnLoad: true,
+        source: { kind: 'url', method: 'GET', url: '/api/users' },
+      },
+    ],
   });
 }
 

@@ -36,7 +36,7 @@ export type Emitted = { kind: 'static'; value: Json | undefined } | { kind: 'cod
  * need is a build failure rather than an untidiness.
  */
 export type ValueHelper =
-  'text' | 'truthy' | 'num' | 'pick' | 'list' | 'initials' | 'initial' | 'cx';
+  'text' | 'truthy' | 'num' | 'pick' | 'list' | 'initials' | 'initial' | 'cx' | 'cell' | 'options';
 
 export type Helpers = Set<ValueHelper>;
 
@@ -239,6 +239,12 @@ export function pascalCase(input: string): string {
     .join('');
 }
 
+/** 'Delete dialog' -> 'deleteDialog'. Empty when the name carries no letters or digits. */
+export function camelCase(input: string): string {
+  const pascal = pascalCase(input);
+  return pascal === '' ? '' : pascal[0]!.toLowerCase() + pascal.slice(1);
+}
+
 /**
  * A handler's name — 'Get started' + 'onClick' -> 'onGetStartedClick'.
  *
@@ -317,4 +323,34 @@ function stripLiterals(source: string): string {
   }
 
   return out;
+}
+
+/**
+ * One field of one row of a data-bound table, as the cell it becomes.
+ *
+ * Its own helper rather than `text(row[key])` written inline, because the two disagree
+ * about arrays: `text` renders a list as JSON, and a table cell holding `["a","b"]` should
+ * read `a, b`. `buildTable` in `@ui-builder/components` makes the same choice, and these
+ * two are the canvas and the export looking at the same table (D6) — so they must not
+ * differ about it.
+ */
+export function cellCode(rowVar: string, field: string, helpers: Helpers): string {
+  return `${using(helpers, 'cell')}(${rowVar}, ${stringLiteral(field)})`;
+}
+
+/**
+ * A bound option list, normalised at run time.
+ *
+ * Emitted as a call rather than resolved while generating, because the items are not known
+ * until the request comes back. The helper is the export's copy of `buildOptions`, so a
+ * `Select` bound to a query offers the same choices in the exported app as it does on the
+ * canvas — which is the whole of D6 applied to a dropdown.
+ */
+export function optionsCode(
+  code: string,
+  valueField: string,
+  labelField: string,
+  helpers: Helpers,
+): string {
+  return `${using(helpers, 'options')}(${code}, ${stringLiteral(valueField)}, ${stringLiteral(labelField)})`;
 }

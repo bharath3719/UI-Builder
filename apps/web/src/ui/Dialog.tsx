@@ -16,6 +16,12 @@ export interface DialogProps {
   footer: React.ReactNode;
   /** Submits the form the body sits in. Given, the whole dialog becomes a `<form>`. */
   onSubmit?: (event: React.FormEvent<HTMLFormElement>) => void;
+  /**
+   * `wide` is for the one modal that is not a short form — the integrations editor, which
+   * is a list beside a detail pane. Two sizes rather than a width prop: a modal that can
+   * be any width is a modal every caller has to make a layout decision about.
+   */
+  size?: 'default' | 'wide';
 }
 
 export function Dialog({
@@ -26,6 +32,7 @@ export function Dialog({
   children,
   footer,
   onSubmit,
+  size = 'default',
 }: DialogProps) {
   const inner = (
     <>
@@ -46,7 +53,9 @@ export function Dialog({
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         <RadixDialog.Overlay className={styles.scrim} />
-        <RadixDialog.Content className={styles.content}>
+        <RadixDialog.Content
+          className={[styles.content, size === 'wide' && styles.wide].filter(Boolean).join(' ')}
+        >
           {onSubmit ? <form onSubmit={onSubmit}>{inner}</form> : inner}
         </RadixDialog.Content>
       </RadixDialog.Portal>

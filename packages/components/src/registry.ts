@@ -25,16 +25,23 @@ import {
 } from '@ui-builder/schema';
 import { CATEGORY_ORDER, type ComponentCategory, type ComponentSpec } from './spec.js';
 import { specForSymbolType, symbolSpec } from './symbols.js';
+import { AccordionSpec } from './specs/Accordion.js';
+import { AlertSpec } from './specs/Alert.js';
 import { AvatarSpec } from './specs/Avatar.js';
 import { BadgeSpec } from './specs/Badge.js';
 import { BoxSpec } from './specs/Box.js';
+import { BreadcrumbSpec } from './specs/Breadcrumb.js';
 import { ButtonSpec } from './specs/Button.js';
 import { CardSpec } from './specs/Card.js';
+import { ChartSpec } from './specs/Chart.js';
 import { ChatMessageSpec } from './specs/ChatMessage.js';
 import { ChatThreadSpec } from './specs/ChatThread.js';
 import { CheckboxSpec } from './specs/Checkbox.js';
+import { CitationSpec } from './specs/Citation.js';
+import { CodeBlockSpec } from './specs/CodeBlock.js';
 import { DatePickerSpec } from './specs/DatePicker.js';
 import { DividerSpec } from './specs/Divider.js';
+import { DrawerSpec } from './specs/Drawer.js';
 import { FooterSpec } from './specs/Footer.js';
 import { GridSpec } from './specs/Grid.js';
 import { HeaderSpec } from './specs/Header.js';
@@ -42,18 +49,27 @@ import { HeadingSpec } from './specs/Heading.js';
 import { ImageSpec } from './specs/Image.js';
 import { InputSpec } from './specs/Input.js';
 import { LinkSpec } from './specs/Link.js';
+import { ModalSpec } from './specs/Modal.js';
+import { MultiSelectSpec } from './specs/MultiSelect.js';
+import { ProgressSpec } from './specs/Progress.js';
 import { PromptInputSpec } from './specs/PromptInput.js';
 import { RadioSpec } from './specs/Radio.js';
 import { RichTextSpec } from './specs/RichText.js';
+import { ScrollSpec } from './specs/Scroll.js';
 import { SelectSpec } from './specs/Select.js';
 import { SideNavSpec } from './specs/SideNav.js';
 import { SliderSpec } from './specs/Slider.js';
+import { SlotSpec } from './specs/Slot.js';
+import { SourceCardSpec } from './specs/SourceCard.js';
 import { SpacerSpec } from './specs/Spacer.js';
 import { HStackSpec, VStackSpec } from './specs/Stack.js';
 import { SwitchSpec } from './specs/Switch.js';
 import { TableSpec } from './specs/Table.js';
+import { TabsSpec } from './specs/Tabs.js';
 import { TextSpec } from './specs/Text.js';
 import { TextareaSpec } from './specs/Textarea.js';
+import { ToolCallSpec } from './specs/ToolCall.js';
+import { TooltipSpec } from './specs/Tooltip.js';
 import { TypingIndicatorSpec } from './specs/TypingIndicator.js';
 
 /**
@@ -67,11 +83,17 @@ export const SPECS: readonly ComponentSpec[] = [
   GridSpec,
   SpacerSpec,
   DividerSpec,
+  ScrollSpec,
+  // Last of the plain containers, and offered only while a component is open — see
+  // `symbolOnly`. It sits here rather than at the top of the group because reaching for a
+  // slot is something you do once a component already has a shape.
+  SlotSpec,
   // The page chrome, in the order someone reaches for it: nearly every page has a
   // header, most have a footer, and a side nav is an app-shell decision.
   HeaderSpec,
   FooterSpec,
   SideNavSpec,
+  BreadcrumbSpec,
 
   HeadingSpec,
   TextSpec,
@@ -80,10 +102,14 @@ export const SPECS: readonly ComponentSpec[] = [
   LinkSpec,
   BadgeSpec,
   AvatarSpec,
+  AlertSpec,
 
   InputSpec,
   TextareaSpec,
   SelectSpec,
+  // Straight after Select: it is the same question with more than one answer, and someone
+  // who has just found the dropdown is who reaches for it.
+  MultiSelectSpec,
   RadioSpec,
   CheckboxSpec,
   SwitchSpec,
@@ -94,15 +120,33 @@ export const SPECS: readonly ComponentSpec[] = [
   // a table, and the palette reads in the order a page gets built.
   CardSpec,
   TableSpec,
+  // After the table, because the table is how you find out what came back and the chart
+  // is what you draw once you know.
+  ChartSpec,
+  ProgressSpec,
 
   ImageSpec,
 
   // Thread first: it is the container the other three are dropped into, so the palette
-  // reads in the order someone builds a chat surface.
+  // reads in the order someone builds a chat surface. The four after it are what goes
+  // *in* an assistant's turn — output, then the work behind it, then where it came from.
   ChatThreadSpec,
   ChatMessageSpec,
   PromptInputSpec,
   TypingIndicatorSpec,
+  CodeBlockSpec,
+  ToolCallSpec,
+  CitationSpec,
+  SourceCardSpec,
+
+  // Modal first: it is the overlay someone reaches for, and the one the others are
+  // read against. Tabs and Accordion sit here rather than in Layout because they are
+  // the same idea — content that is present but not shown.
+  ModalSpec,
+  DrawerSpec,
+  TabsSpec,
+  AccordionSpec,
+  TooltipSpec,
 ];
 
 const BY_KEY = new Map(SPECS.map((spec) => [spec.key, spec]));

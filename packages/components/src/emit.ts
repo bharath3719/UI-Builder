@@ -63,6 +63,20 @@ export type EmitValue =
    * and `rel="noreferrer noopener"` on a Link.
    */
   | { prop: string; as: 'flag'; on: string; equals?: string; default?: boolean }
+  /**
+   * The prop as it stands, with no coercion at all — the array a chart is drawn from.
+   *
+   * Every other form here narrows a value to something an *attribute* can hold, because
+   * every other element in the library is markup. This one is for an element that is a
+   * component (`from`), whose prop is genuinely `unknown`: bound, it is whatever the
+   * expression evaluated to, and the component decides what that was. Typed out instead,
+   * it is the text that was typed, which is `as: 'string'` — so the two forms below are
+   * the only place this differs from one.
+   *
+   * It is deliberately not usable on an intrinsic tag: there is no `EmitElement` without
+   * `from` that names it, and handing a raw array to a DOM attribute would stringify it.
+   */
+  | { prop: string; as: 'data' }
   /** 'Ada Lovelace' -> 'AL'. The Avatar fallback. */
   | { prop: string; as: 'initials' }
   /** The first character, uppercased, falling back to another value's. */
@@ -124,11 +138,19 @@ export type EmitAttr = EmitValue | { when: EmitCondition; value: EmitValue };
  * it needs state and event handlers, and no amount of template vocabulary describes those
  * without becoming a programming language.
  *
- * So the escape hatch is deliberately narrow. A module named here must be a **wrapper**:
- * it takes the markup the template already produced as its children and adds behaviour to
- * it, never markup of its own. That is what keeps D6 — the canvas and the export render
- * the same elements because they come from the same template, and the module only decides
- * what order they sit in and what happens when one is dragged.
+ * So the escape hatch is deliberately narrow, and two of the three modules are **wrappers**:
+ * they take the markup the template already produced as their children and add behaviour to
+ * it, never markup of their own. That is what keeps D6 for them — the canvas and the export
+ * render the same elements because they come from the same template, and the module only
+ * decides what order they sit in and what happens when one is dragged.
+ *
+ * `CHART` is the exception, and it is one because the rule does not reach it rather than
+ * because the rule was relaxed. A chart's markup *is* its data — five rows are five rects
+ * at coordinates nothing knows until a query answers — so there is no markup for a wrapper
+ * to wrap and no template that could have written it. What keeps D6 there is the twin test
+ * below, which is the stronger promise of the two: the canvas and the export do not merely
+ * render the same elements, they run the same code. A fourth module claiming the same
+ * exemption has to be able to say that its shape is unknowable until run time.
  *
  * `source` is a string for `css.ts`'s reason: it has to reach the studio's code panel in
  * the browser, the API's zip route in Node and a snapshot test, and a plain string is the
@@ -159,7 +181,23 @@ export type EmitChild =
    * behind `Select`, whose choices are data typed into a textarea rather than child
    * nodes (§7).
    */
-  | { options: { prop: string } }
+  | {
+      options: {
+        prop: string;
+        /**
+         * Which key of each item is the value and which is the label, for when `prop` is
+         * *bound* to an array rather than typed as lines.
+         *
+         * Their presence is what lets this transform have a second form at all: with the
+         * fields known while generating, the generator can write a `.map()` over the bound
+         * array instead of refusing it (see `staticOnly`). Left empty they fall back to the
+         * conventional keys, which is what makes binding a plain list of records work with
+         * nothing configured.
+         */
+        valueField?: string;
+        labelField?: string;
+      };
+    }
   /**
    * The same option list expanded into labelled radio inputs — `Radio`.
    *
@@ -170,6 +208,23 @@ export type EmitChild =
    * field here names the *prop* the value is read from, not the value.
    */
   | { radios: { options: string; name: string; checked: string; disabled: string } }
+  /**
+   * The same option list expanded into labelled *checkboxes* — `MultiSelect`.
+   *
+   * `radios` with a different input type would be the shorter story and the wrong one: a
+   * radio group's `checked` names one value, and this one names a list of them
+   * (`parseSelection`). The two transforms therefore read the same prop and mean different
+   * things by it, which is exactly the sort of thing a shared implementation would lose.
+   */
+  | { checkOptions: { options: string; name: string; checked: string; disabled: string } }
+  /**
+   * The chosen options' labels, as chips — the field of a closed `MultiSelect`.
+   *
+   * A transform because the shape depends on the data twice over: how many chips there are
+   * is how many values were selected, and what each one *says* is a label that only the
+   * option list knows. `selected` names the prop holding the comma-separated values.
+   */
+  | { chips: { options: string; selected: string } }
   /**
    * The same option list expanded into anchors, one marked as the current page — the
    * link row shared by `SideNav`, `Header` and `Footer`.
@@ -184,6 +239,25 @@ export type EmitChild =
    * where a site goes, not where the reader is.
    */
   | { navItems: { items: string; active?: string; class: string } }
+  /**
+   * The same option list expanded into a tab strip — `Tabs`.
+   *
+   * Its own transform rather than `navItems` with a different class, because a tab is not
+   * a link: it is a `<button>` carrying `role="tab"`, and exactly one of them is current
+   * whatever was typed into `active` (`selectedOption`). A footer can mark nothing; a tab
+   * strip with nothing selected reads as a rendering fault.
+   */
+  | { tabItems: { items: string; active: string } }
+  /**
+   * `Title | Body` per line expanded into `<details>` rows — `Accordion`.
+   *
+   * The one transform whose output is interactive and still ships no JavaScript: a
+   * disclosure is a browser feature, so the exported page opens and closes with nothing
+   * wired up. `open` names the boolean prop that decides whether the *first* row starts
+   * open; the rest never do, which is what makes a fresh accordion legible rather than a
+   * wall of open text.
+   */
+  | { disclosures: { items: string; open?: string } }
   /**
    * Expands Markdown into the elements it describes — `RichText`.
    *
@@ -201,7 +275,7 @@ export type EmitChild =
    * body. `grip` names the boolean prop that decides whether a leading, empty heading
    * sits above the column of drag handles.
    */
-  | { tableHead: { columns: string; rows: string; grip?: string } }
+  | { tableHead: { columns: string; rows: string; fields?: string; grip?: string } }
   /**
    * The body `<tr>`s, and — when there are none — the single row that says so.
    *
@@ -213,6 +287,15 @@ export type EmitChild =
       tableRows: {
         columns: string;
         rows: string;
+        /**
+         * The prop naming which key of each row fills each column.
+         *
+         * Only consulted when `rows` is *bound* to an array — a table typed out as text
+         * says what is in each column by position. It is what lets this transform have a
+         * second form at all: with the fields known statically, the generator can write a
+         * `.map()` over the bound array instead of refusing (see `staticOnly`).
+         */
+        fields?: string;
         grip?: string;
         /** The string prop shown, spanning every column, when there are no rows. */
         empty?: string;

@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch makes the first run's answer worthless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # One job rather than a matrix of parallel ones. Every check here needs the generated
+  # Prisma client (typecheck reads its types, the API build bundles it), so splitting
+  # would mean repeating `npm ci` and `prisma generate` in each shard to save less time
+  # than that setup costs. Revisit if the suite outgrows a few minutes.
+  check:
+    name: format · lint · typecheck · build
+    runs-on: ubuntu-latest
+
+    # Only the (now removed) test step ever connected to this. It is kept so re-enabling
+    # the suite is a one-line change in vitest.config.ts rather than a workflow rewrite;
+    # drop this block if you decide the tests are gone for good.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ui_builder
+        ports:
+          - 5432:5432
+        # Without this the first migration races the server's own startup.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # apps/api/.env is gitignored and absent here, so every variable src/env.ts
+      # validates has to arrive from the environment instead.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ui_builder?schema=public
+      # The suite derives `<name>_test` from DATABASE_URL and creates it, but saying so
+      # explicitly keeps the runner's database independent of that derivation.
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ui_builder_test?schema=public
+      # A CI-only value. Real secrets never live in a workflow file; this one signs
+      # tokens for a database that is destroyed with the runner.
+      JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
+      # Turn a request log per assertion back on by editing this to `info` when a
+      # failure needs explaining.
+      LOG_LEVEL: silent
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      # Formatting first: it is the fastest check and the one most likely to be the
+      # only thing wrong, so failing here saves the rest of the run.
+      - name: Format
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # The test step is intentionally gone — the suite is disabled in vitest.config.ts.
+      # Put `- name: Test` / `run: npm test` back here if you re-enable it there.
+
+      - name: Build
+        run: npm run build

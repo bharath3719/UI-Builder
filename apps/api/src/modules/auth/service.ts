@@ -33,6 +33,29 @@ async function issueRefreshToken(db: Db, userId: string): Promise<string> {
   return token;
 }
 
+/**
+ * Drops this user's dead refresh tokens.
+ *
+ * Rotation revokes rather than deletes, which is what makes reuse detectable — so without
+ * a sweep the table only grows: a session that refreshes every fifteen minutes for a month
+ * leaves a few thousand rows behind, on the table every refresh then queries.
+ *
+ * **Only expired rows.** A revoked row inside its expiry is doing a job: `refresh` reads
+ * it to tell "this token was already spent, so it was copied" apart from "no such token",
+ * and deleting it early would turn a detected theft — which drops every session for the
+ * user — into an ordinary "please sign in again" that leaves the attacker's other stolen
+ * tokens working. Past `expiresAt` there is nothing left to detect, because the row would
+ * be rejected on its expiry anyway.
+ *
+ * Scoped to one user and run on their own refresh, so it needs no scheduler: the work
+ * lands on the sessions that are actually generating the rows.
+ */
+function pruneDeadTokens(db: Db, userId: string) {
+  return db.refreshToken.deleteMany({
+    where: { userId, expiresAt: { lt: new Date() } },
+  });
+}
+
 export async function register(db: Db, input: RegisterRequest): Promise<Session> {
   const existing = await db.user.findUnique({ where: { email: input.email } });
   if (existing) {
@@ -105,7 +128,9 @@ export async function refresh(db: Db, rawToken: string): Promise<Session> {
   const token = generateRefreshToken();
 
   // One transaction, so a crash between the two writes cannot leave the user holding a
-  // token that was never stored — or two live tokens where there should be one.
+  // token that was never stored — or two live tokens where there should be one. The prune
+  // rides along: it is one statement against the rows this user's own rotations left
+  // behind, and putting it here means the sweep happens exactly as often as the growth.
   await db.$transaction([
     db.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } }),
     db.refreshToken.create({
@@ -115,6 +140,7 @@ export async function refresh(db: Db, rawToken: string): Promise<Session> {
         expiresAt: refreshTokenExpiry(),
       },
     }),
+    pruneDeadTokens(db, stored.userId),
   ]);
 
   return { user: toAuthUser(stored.user), refreshToken: token };

@@ -1,6 +1,7 @@
-import { useMemo, useRef, useState } from 'react';
-import { Search, Square } from 'lucide-react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronRight, Search, Square } from 'lucide-react';
 import {
+  SLOT_TYPE,
   createNodeFor,
   getSpec,
   searchSpecs,
@@ -54,15 +55,25 @@ const BOX_SPEC = getSpec('Box');
  * that would make it contain itself. Hiding them is where that rule is enforced: a drag
  * that cannot land is worse than an entry that is not offered, because the indicator would
  * have to explain itself and there is nowhere to say it.
+ *
+ * `Slot` is filtered on the same principle and for two reasons at once. On a page it is
+ * meaningless — a page is never placed inside anything, so nothing could ever fill the
+ * hole. Inside a component that already has one it is refused because slots are one per
+ * component in this pass (PLAN.md §12); offering a second and then having the renderer
+ * quietly pick the first is the kind of silence this palette exists to avoid.
  */
 function placeable(
   doc: ProjectDoc,
   target: EditTarget,
+  surface: Page,
   specs: readonly ComponentSpec[],
 ): ComponentSpec[] {
-  if (target.kind === 'page') return [...specs];
+  const hasSlot = Object.values(surface.nodes).some((node) => node.type === SLOT_TYPE);
 
   return specs.filter((spec) => {
+    if (spec.symbolOnly && (target.kind !== 'symbol' || hasSlot)) return false;
+    if (target.kind === 'page') return true;
+
     const symbolId = symbolIdOf(spec.key);
     return symbolId === null || canPlaceSymbol(doc, symbolId, target.id);
   });
@@ -134,23 +145,44 @@ export function Palette() {
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { doc, target, symbols } = studio;
+  /**
+   * Which category headings are folded shut.
+   *
+   * In memory rather than in `localStorage`, on the layers tree's reasoning: the palette
+   * stays mounted while the rail shows another view, so a fold survives everything except
+   * a reload — and which of eight headings someone had shut is not a preference worth
+   * keeping beside the panel widths.
+   */
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set<string>());
+
+  const toggleCategory = useCallback((category: string) => {
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (!next.delete(category)) next.add(category);
+      return next;
+    });
+  }, []);
+
+  const { doc, target, symbols, page } = studio;
 
   const results = useMemo(
-    () => (query.trim() ? placeable(doc, target, searchSpecs(query, symbols)) : null),
-    [query, doc, target, symbols],
+    () => (query.trim() ? placeable(doc, target, page, searchSpecs(query, symbols)) : null),
+    [query, doc, target, page, symbols],
   );
 
   const groups = useMemo(
     () =>
       specsByCategory(symbols)
-        .map((group) => ({ ...group, specs: placeable(doc, target, group.specs) }))
+        .map((group) => ({ ...group, specs: placeable(doc, target, page, group.specs) }))
         .filter((group) => group.specs.length > 0),
-    [doc, target, symbols],
+    [doc, target, page, symbols],
   );
 
   return (
     <div className={styles.palette}>
+      {/* Outside the scrolling list rather than the first thing in it: the field is how
+          you find a component in a library this long, and one that scrolls away is one
+          you have to scroll back up to reach. */}
       <div className={styles.search}>
         <Search className={styles.searchIcon} size={13} strokeWidth={2} aria-hidden />
         <input
@@ -170,33 +202,71 @@ export function Palette() {
         />
       </div>
 
-      {results ? (
-        results.length > 0 ? (
-          <div className={styles.grid}>
-            {results.map((spec) => (
-              <PaletteItem key={spec.key} spec={spec} />
-            ))}
-          </div>
-        ) : (
-          // §7: a zero-result state offers Box rather than an apology, because "an
-          // element I will style myself" is always a valid answer.
-          <div className={styles.empty}>
-            <p className={styles.emptyText}>No component matches “{query}”.</p>
-            {BOX_SPEC ? <PaletteItem spec={BOX_SPEC} /> : null}
-          </div>
-        )
-      ) : (
-        groups.map((group) => (
-          <section key={group.category} className={styles.group}>
-            <h3 className={styles.groupTitle}>{group.category}</h3>
+      <div className={styles.list}>
+        {results ? (
+          results.length > 0 ? (
             <div className={styles.grid}>
-              {group.specs.map((spec) => (
+              {results.map((spec) => (
                 <PaletteItem key={spec.key} spec={spec} />
               ))}
             </div>
-          </section>
-        ))
-      )}
+          ) : (
+            // §7: a zero-result state offers Box rather than an apology, because "an
+            // element I will style myself" is always a valid answer.
+            <div className={styles.empty}>
+              <p className={styles.emptyText}>No component matches “{query}”.</p>
+              {BOX_SPEC ? <PaletteItem spec={BOX_SPEC} /> : null}
+            </div>
+          )
+        ) : (
+          // A search reads across the whole library, so the headings are only drawn when
+          // there is no query — folding a group that is not on screen means nothing.
+          groups.map((group) => {
+            const open = !collapsed.has(group.category);
+
+            return (
+              <section key={group.category} className={styles.group}>
+                <h3 className={styles.groupHeading}>
+                  <button
+                    type="button"
+                    className={styles.groupTitle}
+                    aria-expanded={open}
+                    onClick={() => toggleCategory(group.category)}
+                  >
+                    {open ? (
+                      <ChevronDown
+                        className={styles.groupCaret}
+                        size={12}
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                    ) : (
+                      <ChevronRight
+                        className={styles.groupCaret}
+                        size={12}
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                    )}
+                    <span className={styles.groupName}>{group.category}</span>
+                    {/* The count is what makes a folded group still say how much is in
+                        it, which is the one thing folding takes away. */}
+                    <span className={styles.groupCount}>{group.specs.length}</span>
+                  </button>
+                </h3>
+
+                {open ? (
+                  <div className={styles.grid}>
+                    {group.specs.map((spec) => (
+                      <PaletteItem key={spec.key} spec={spec} />
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

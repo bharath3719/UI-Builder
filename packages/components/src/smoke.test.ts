@@ -16,6 +16,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { COMPONENTS } from './react/implementations.js';
+import { SLOT_TYPE } from './specs/Slot.js';
 import { SPECS } from './registry.js';
 import { isDesignTimeControl } from './spec.js';
 
@@ -43,8 +44,14 @@ describe('every spec renders', () => {
           }),
         );
         expect(html, spec.key).not.toBe('');
-        expect(html, spec.key).toContain('ub-n-test');
         expect(html, spec.key).toContain('data-ub-id="test"');
+
+        // `Slot` is the one component that drops the node's class, and deliberately: it
+        // renders no element in the export, so a rule written against it would have no
+        // selector to match there. Wearing the class only on the canvas is exactly the
+        // "works here, does nothing once shipped" failure D6 exists to prevent — so the
+        // class is dropped in both, and the inspector declines to write one at all.
+        if (spec.key !== SLOT_TYPE) expect(html, spec.key).toContain('ub-n-test');
 
         // The preview and the export are the page as it ships. A control frozen there
         // is the bug this pass exists for: a `readOnly` date input will not open its

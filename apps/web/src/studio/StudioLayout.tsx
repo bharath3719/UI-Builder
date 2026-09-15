@@ -103,6 +103,9 @@ function useEditorShortcuts() {
     selectedId,
     deleteSelected,
     duplicateSelected,
+    copySelected,
+    cutSelected,
+    pasteClipboard,
     select,
     selectMany,
     drag,
@@ -183,11 +186,34 @@ function useEditorShortcuts() {
         return;
       }
 
+      // Paste before the selection check: an empty canvas is exactly where someone pastes,
+      // and there is nothing selected on one. It lands in the page root in that case.
+      if (hasMod(event) && event.key.toLowerCase() === 'v') {
+        event.preventDefault();
+        pasteClipboard();
+        return;
+      }
+
       if (!selectedId) return;
 
       if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
         deleteSelected();
+        return;
+      }
+
+      // `preventDefault` so the browser does not also copy whatever of the studio's own
+      // chrome happens to be selected — `isTyping` above has already let every real text
+      // field keep its native copy and paste.
+      if (hasMod(event) && event.key.toLowerCase() === 'c') {
+        event.preventDefault();
+        copySelected();
+        return;
+      }
+
+      if (hasMod(event) && event.key.toLowerCase() === 'x') {
+        event.preventDefault();
+        cutSelected();
         return;
       }
 
@@ -204,6 +230,9 @@ function useEditorShortcuts() {
     selectedId,
     deleteSelected,
     duplicateSelected,
+    copySelected,
+    cutSelected,
+    pasteClipboard,
     select,
     selectMany,
     drag,
@@ -236,7 +265,12 @@ export function StudioLayout(props: {
       // viewport — is about *this* project, and resetting each of them by hand on a
       // prop change is a list that would be incomplete the first time one was added.
       key={project.id}
-      project={{ id: project.id, name: project.name, role: project.role }}
+      project={{
+        id: project.id,
+        name: project.name,
+        workspaceId: project.workspaceId,
+        role: project.role,
+      }}
       fallback={({ problem, retry }) =>
         problem ? (
           <ScreenMessage
@@ -302,7 +336,9 @@ function StudioFrame({
                 <Components />
               </Section>
 
-              <Section title={RAIL_LABELS.library} hidden={view !== 'library'}>
+              {/* Flush, like the layers tree: the palette scrolls its own list so that
+                  its search field can stay fixed above it. */}
+              <Section title={RAIL_LABELS.library} hidden={view !== 'library'} flush>
                 <Palette />
               </Section>
 

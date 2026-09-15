@@ -35,6 +35,20 @@
   touch-action: none;
 }
 
+/* A row that can be picked up says so before it is pressed — the tree reorders the page,
+   and a plain pointer reads as a list you can only click. The root and anything locked
+   keep the default arrow (see `grabbable`). */
+.rowGrabbable {
+  cursor: grab;
+}
+
+/* The whole tree, for the length of the drag. Two classes of weight against the open
+   hand's one, so it wins wherever the pointer is. */
+.treeDragging,
+.treeDragging .row {
+  cursor: grabbing;
+}
+
 .rowHovered {
   background: var(--c-surface-hover);
 }
@@ -58,6 +72,8 @@
 
 /* --- Row parts ------------------------------------------------------------- */
 
+/* Its own gesture, not the row's — it expands rather than picks up, so it does not
+   inherit the row's open hand. Matches the two toggles at the other end. */
 .caret {
   display: flex;
   align-items: center;
@@ -66,6 +82,7 @@
   width: 14px;
   height: 100%;
   color: var(--c-text-subtle);
+  cursor: default;
 }
 
 .rowSelected .caret {

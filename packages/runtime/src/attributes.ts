@@ -23,6 +23,19 @@ export const NODE_ERROR_ATTRIBUTE = 'data-ub-error';
 export const NODE_INACTIVE_ATTRIBUTE = 'data-ub-inactive';
 
 /**
+ * Set on the frame's root element while the node under the pointer is one the canvas would
+ * pick up — see `Canvas.tsx`, which owns the question.
+ *
+ * A cursor rather than an outline, and on the *document* rather than on the node, for one
+ * reason: the studio's own stylesheet stops at the iframe, so the only way the design can
+ * say "this is draggable" is a rule inside the frame — and the studio is the only side that
+ * knows whether it is. The page root and a locked node are deliberately excluded there: the
+ * one has nowhere to move to and the other is pinned, and a hand over either is a promise
+ * the canvas would then refuse.
+ */
+export const DRAG_READY_ATTRIBUTE = 'data-ub-grab';
+
+/**
  * Editor chrome for the two above.
  *
  * It lives with the runtime rather than with the component library's CSS because it
@@ -42,4 +55,20 @@ export const NODE_STATUS_CSS = `[${NODE_ERROR_ATTRIBUTE}] {
   opacity: 0.45;
   outline: 1px dashed hsl(220 9% 60%);
   outline-offset: 1px;
+}`;
+
+/**
+ * The open hand, while the design is being edited.
+ *
+ * The descendant half is load-bearing rather than belt-and-braces: `cursor` inherits, but a
+ * component that sets its own — `.ub-button` is `pointer`, `.ub-select` is too — would
+ * otherwise keep it, and a button is exactly the kind of thing someone drags around a page.
+ * Two selectors of weight against the library's one, so this wins without `!important`.
+ *
+ * Editor-only, like the two rules above: `editing: false` emits none of this, so a shipped
+ * page carries no cursor it did not ask for.
+ */
+export const CANVAS_CURSOR_CSS = `:root[${DRAG_READY_ATTRIBUTE}],
+:root[${DRAG_READY_ATTRIBUTE}] * {
+  cursor: grab;
 }`;

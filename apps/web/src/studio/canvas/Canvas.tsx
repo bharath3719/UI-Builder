@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { NODE_ID_ATTRIBUTE, PageRenderer } from '@ui-builder/runtime';
+import {
+  DRAG_READY_ATTRIBUTE,
+  NODE_ID_ATTRIBUTE,
+  PageRenderer,
+  type QueryFailure,
+} from '@ui-builder/runtime';
+import { useIntegrationCatalog } from '../../api/useIntegrationCatalog.js';
+import { useToast } from '../../toast/context.js';
 import { isLocked, symbolDefaultProps, type Node, type NodeId } from '@ui-builder/schema';
 import { useStudio } from '../state/context.js';
 import {
@@ -12,6 +19,7 @@ import { canDrag } from '../dnd/rules.js';
 import { CanvasFrame } from './CanvasFrame.js';
 import { isMarquee, marqueeRect, nodesInMarquee } from './marquee.js';
 import { dragLabel, resolveDrop } from './resolveDrop.js';
+import { SpacingHandles } from './SpacingHandles.js';
 import { useViewportGestures } from './useViewportGestures.js';
 import {
   ARTBOARD_SIZE,
@@ -93,9 +101,34 @@ export function Canvas() {
     viewport,
     cell,
     artboardWidth,
+    workspaceId,
+    writable,
     select,
     hover,
   } = studio;
+
+  const integrations = useIntegrationCatalog(workspaceId);
+
+  /**
+   * A query failing while the page is being built.
+   *
+   * Nothing said so before this. The error lands on the query's own state, which is the
+   * right place for a *finished* page to read it from — but on the canvas nobody has bound
+   * `{{ queries.users.error }}` to anything yet, so a connection with a dead token showed
+   * up as a list that simply stayed empty, and the obvious reading of that is that the
+   * binding is wrong. The point of the toast is to say it is not.
+   *
+   * Keyed per query, so one broken endpoint is one toast however many times the request is
+   * rebuilt — and typing in a field that a query interpolates rebuilds it on every
+   * keystroke.
+   */
+  const toast = useToast();
+  const onQueryFailure = useCallback(
+    ({ id, name, message }: QueryFailure) => {
+      toast.error(message, { title: `Query “${name}” failed`, key: `query:${id}` });
+    },
+    [toast],
+  );
 
   const symbolProps = useMemo(() => (symbol ? symbolDefaultProps(symbol) : undefined), [symbol]);
 
@@ -421,6 +454,41 @@ export function Canvas() {
   // frame must neither hit-test nor set the cursor.
   const frameInert = drag !== null || panning || panReady || band !== null;
 
+  /**
+   * The open hand over anything the canvas would pick up.
+   *
+   * An attribute on the frame's root rather than a rule in the studio's stylesheet, because
+   * the studio's CSS stops at the iframe — see `CANVAS_CURSOR_CSS`, which is the rule it
+   * switches on. The condition is `canDrag`, the same function the press consults, so the
+   * cursor cannot promise a drag the pointerdown then declines: the page root has nowhere
+   * to move to, a locked node is pinned, and a reader who may not edit drags nothing.
+   *
+   * Cleared while the frame is inert, where the parent's own cursor takes over — mid-drag
+   * that is `grabbing`, and mid-pan it is the pan's.
+   */
+  useEffect(() => {
+    const root = doc?.documentElement;
+    if (!root) return;
+
+    const ready = writable && !frameInert && hoveredId !== null && canDrag(page, hoveredId);
+    if (ready) root.setAttribute(DRAG_READY_ATTRIBUTE, '');
+    else root.removeAttribute(DRAG_READY_ATTRIBUTE);
+
+    return () => root.removeAttribute(DRAG_READY_ATTRIBUTE);
+  }, [doc, writable, frameInert, hoveredId, page]);
+
+  /**
+   * The node whose spacing handles are showing, or null.
+   *
+   * One node only — see `SpacingHandles`, which explains why a gesture drawn on one
+   * element must not write to five. A locked node is excluded on the canvas's own rule:
+   * a lock means the canvas does not edit it, and dragging its padding plainly would.
+   */
+  const spacingTarget =
+    writable && !frameInert && selectedIds.length === 1 && selectedId && !isLocked(page, selectedId)
+      ? (selectionRects.find((placed) => placed.id === selectedId) ?? null)
+      : null;
+
   return (
     <div
       ref={areaRef}
@@ -428,6 +496,9 @@ export function Canvas() {
         styles.area,
         panning ? styles.areaPanning : '',
         !panning && panReady ? styles.areaPanReady : '',
+        // Mid-drag the frame is inert, so the closed hand has to come from out here or the
+        // design's own cursor would show through a gesture that is already under way.
+        drag ? styles.areaDragging : '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -499,6 +570,10 @@ export function Canvas() {
               page={page}
               symbols={symbols}
               theme={theme}
+              // The workspace's API connections, credentials included. Held by the host
+              // rather than the document, which carries none — see `useIntegrationCatalog`.
+              integrations={integrations}
+              onQueryFailure={onQueryFailure}
               // Editing a component renders it against its own defaults, which is what a
               // placement that sets nothing would show. Without them every binding in it
               // would draw its fallback, and a component is not buildable if you cannot
@@ -535,6 +610,14 @@ export function Canvas() {
           labelled={!drag && placed.id === selectedId}
         />
       ))}
+
+      {/* Spacing handles, on one node at a time. Suppressed whenever the pointer already
+          belongs to something else — mid-drag, mid-band, mid-pan — so the bands cannot
+          swallow a gesture that was aimed past them, and on a locked node, which is the
+          same rule the canvas applies to selection. */}
+      {spacingTarget && doc ? (
+        <SpacingHandles nodeId={spacingTarget.id} rect={spacingTarget.rect} doc={doc} />
+      ) : null}
 
       {band ? <div className={styles.marquee} style={rectStyle(band)} aria-hidden /> : null}
     </div>

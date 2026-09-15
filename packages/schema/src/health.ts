@@ -5,7 +5,13 @@ export const HealthCheck = z.object({
   ok: z.boolean(),
   /** Round-trip time for the probe, or null if the probe never completed. */
   latencyMs: z.number().nullable(),
-  /** Human-readable failure reason. Null when `ok`. */
+  /**
+   * Human-readable failure reason. Null when `ok`.
+   *
+   * Says *that* the probe failed, not what the dependency said — this response is public
+   * (see the health route), and a driver's own error message describes the infrastructure
+   * behind it. The detail is in the API log.
+   */
   error: z.string().nullable(),
 });
 export type HealthCheck = z.infer<typeof HealthCheck>;

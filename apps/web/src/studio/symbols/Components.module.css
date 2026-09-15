@@ -139,6 +139,25 @@
   box-shadow: inset 0 0 0 2px var(--c-focus-ring);
 }
 
+/* Disabled rather than hidden: the command is only offered for a single selected node,
+   and an entry that vanishes when two things are selected reads as a bug. The title
+   attribute carries the reason. */
+.add:disabled {
+  color: var(--c-text-muted);
+  cursor: default;
+}
+
+.add:disabled:hover {
+  background: transparent;
+  color: var(--c-text-muted);
+}
+
+/* The second of the two buttons loses the top border, so the pair reads as one block
+   rather than two stacked strips. */
+.addPaired {
+  border-block-start: none;
+}
+
 .addSmall {
   display: flex;
   align-items: center;

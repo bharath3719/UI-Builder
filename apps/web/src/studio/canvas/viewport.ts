@@ -194,6 +194,19 @@ export function scaleLength(length: number, projection: Projection): number {
   return length * projection.zoom;
 }
 
+/**
+ * A length measured on screen, in the design's own pixels — the inverse of
+ * `scaleLength`.
+ *
+ * What a drag on the canvas needs: the pointer travels in studio pixels, and the number
+ * it is editing is in the design's. Here rather than at the call site for §5.3's reason —
+ * a gesture that divides by `zoom` in its own way is one that works at 100% and drifts
+ * everywhere else.
+ */
+export function unscaleLength(length: number, projection: Projection): number {
+  return projection.zoom === 0 ? 0 : length / projection.zoom;
+}
+
 /** A point measured inside the frame, in studio client coordinates. */
 export function toStudioPoint(
   x: number,

@@ -145,6 +145,11 @@ export interface EditOptions {
    * that is always its own decision — a drop, a delete, a rename.
    */
   coalesce?: string;
+  /**
+   * Drop the "in quick succession" part and merge on the key alone — for a gesture whose
+   * end is known, which is to say one the pointer is holding open. See `PushOptions`.
+   */
+  sustained?: boolean;
 }
 
 /**
@@ -161,6 +166,22 @@ export interface EditOptions {
 export type EditTarget = { kind: 'page'; id: string } | { kind: 'symbol'; id: string };
 
 export interface StudioState {
+  /**
+   * The project this document belongs to.
+   *
+   * Carried rather than read off `doc.id`, which happens to hold the same value today: the
+   * document is a stored blob that travels — a restore, an import, a fixture — and the
+   * thing an upload has to be filed under is the project the editor was opened on.
+   */
+  projectId: string;
+  /**
+   * The workspace that project belongs to.
+   *
+   * Carried for the same reason as `projectId`, and used for the same kind of thing: the
+   * Data panel's queries bind to API connections, which are a workspace resource and have
+   * no other route into the studio.
+   */
+  workspaceId: string;
   /** The whole document. `page` is the one being edited; both are the same object graph. */
   doc: ProjectDoc;
   /**
@@ -257,6 +278,27 @@ export interface StudioState {
    */
   deleteSelected: () => void;
   duplicateSelected: () => void;
+  /**
+   * Turns the one selected node into a reusable component, in place, and returns the id of
+   * the component that was made — or null when the selection cannot become one.
+   *
+   * Unlike its two neighbours this takes a single node rather than the whole selection, and
+   * that is a decision rather than an omission: several siblings would need a root to live
+   * in, and inventing one silently changes the layout. See `symbolFromSelection`.
+   */
+  componentFromSelection: () => string | null;
+  /**
+   * The studio's own clipboard — PLAN.md §12. Each returns how many nodes it acted on, so a
+   * caller can say what happened without re-deriving the selection.
+   *
+   * Not the system clipboard, deliberately: reading that needs a permission prompt in some
+   * browsers and returns nothing in others, and a subtree of a document means nothing to
+   * any other application. See `copySelected`.
+   */
+  copySelected: () => number;
+  cutSelected: () => number;
+  pasteClipboard: () => number;
+  canPaste: boolean;
 
   undo: () => void;
   redo: () => void;
@@ -276,8 +318,15 @@ export interface StudioState {
    * Writes declarations into the active cell for every selected node. `undefined`
    * clears a property, which is how a field resets to whatever it inherits rather
    * than pinning an explicit value.
+   *
+   * `options` overrides how the write joins the undo stack. It exists for the canvas's
+   * spacing drag, which streams writes for as long as the pointer is down and wants all of
+   * them to be the one step the user thinks they took — see `EditOptions.sustained`.
    */
-  setStyle: (decls: Record<string, string | number | undefined>) => void;
+  setStyle: (
+    decls: Record<string, string | number | undefined>,
+    options?: Pick<EditOptions, 'sustained'>,
+  ) => void;
   /**
    * Writes one prop on every selected node of the primary's component type;
    * `undefined` removes it. The type check is not a formality — `variant` on a Button

@@ -108,12 +108,70 @@ export function initial(value: string, or = ''): string {
  * whose shape nothing here knows, and expressions written in the builder read them by
  * name. A project that will not compile is worse than one whose rows are not narrowed.
  */
+/**
+ * One field of one row of a data-bound table.
+ *
+ * Distinct from text() in exactly one way, and deliberately: a field holding an array
+ * reads as "a, b" rather than as JSON, because a table cell is a cell. A field holding an
+ * object is marked rather than dumped — it means the table was bound one level too high,
+ * and "[object]" says that in the width a column actually has.
+ */
+export function cell(row: unknown, field: string): string {
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) return text(row);
+
+  const value = (row as Record<string, unknown>)[field];
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return value.map((item) => cell({ item }, 'item')).join(', ');
+  return '[object]';
+}
+
 export function list(value: unknown): any[] {
   if (Array.isArray(value)) return value as unknown[];
   if (typeof value === 'number' && Number.isFinite(value) && value >= 1) {
     return Array.from({ length: Math.floor(value) }, (_, index) => index);
   }
   return [];
+}
+
+/**
+ * A bound option list, normalised into the value/label pairs a <select> needs.
+ *
+ * The export's copy of buildOptions: an item that is a plain value is its own value and
+ * label, and an object is read by the named fields — or, when none were named, by the
+ * conventional ones. Falling back is what makes binding an ordinary API response work
+ * with nothing configured, and the canvas does exactly the same thing, so the choices
+ * offered here are the choices the builder showed.
+ */
+export function options(
+  value: unknown,
+  valueField = '',
+  labelField = '',
+): { value: string; label: string }[] {
+  const VALUE_KEYS = ['value', 'id', 'key'];
+  const LABEL_KEYS = ['label', 'name', 'title', 'text'];
+
+  const read = (row: Record<string, unknown>, named: string, fallbacks: string[]) => {
+    if (named !== '') return named in row ? cell(row, named) : null;
+    const found = fallbacks.find((key) => key in row);
+    return found === undefined ? null : cell(row, found);
+  };
+
+  return list(value).flatMap((item) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      const label = text(item);
+      return label === '' ? [] : [{ value: label, label }];
+    }
+
+    const row = item as Record<string, unknown>;
+    const found = read(row, valueField, VALUE_KEYS);
+    const label = read(row, labelField, LABEL_KEYS);
+    if (found === null && label === null) return [];
+
+    const resolved = found ?? label!;
+    return [{ value: resolved, label: label ?? resolved }];
+  });
 }
 
 /**

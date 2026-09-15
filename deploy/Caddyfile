@@ -1,0 +1,88 @@
+# Caddy fronts the whole app: it terminates TLS, serves the studio's static build, and
+# forwards the two API paths to Fastify.
+#
+# SITE_ADDRESS comes from the environment (see .env.example). Set it to your domain and
+# Caddy gets a Let's Encrypt certificate on first boot and renews it thereafter — which
+# is the entire reason Caddy is here rather than nginx. Set it to :80 instead and you get
+# plain HTTP, which is fine for a first smoke test against the instance's public IP but
+# not for anything real: the session cookie is marked Secure.
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# ── Response headers everything gets ──────────────────────────────────────────────
+	#
+	# Set out here rather than per handler so the API's responses carry them too. These
+	# are the three that cost nothing and cannot break a feature:
+	#
+	#   HSTS      — a year, because the cookie is Secure and a downgrade is the way around
+	#               that. Browsers ignore it over plain HTTP, so a `:80` smoke test is
+	#               unaffected; it starts applying when SITE_ADDRESS becomes a domain.
+	#   nosniff   — this origin serves user-authored content (a published page, an uploaded
+	#               asset URL), and content-type sniffing is how such a thing gets run as
+	#               something other than what it was served as.
+	#   Referrer  — a published page's URL *is* its credential (see publish/service.ts), so
+	#               a full referrer sent to a third-party image host would hand the link out.
+	#               `strict-origin-when-cross-origin` sends only the origin off-site.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# Deliberately absent, so the next person does not have to work out whether it was an
+	# oversight:
+	#
+	#   X-Frame-Options / frame-ancestors — embedding a published page in someone else's
+	#     site is a plausible thing to want from a share link, and this is the header that
+	#     silently forbids it. Add `SAMEORIGIN` if that is decided against; do not add it
+	#     by reflex.
+	#   Content-Security-Policy — the studio renders the design in an iframe it writes to,
+	#     and the inspector writes per-node CSS as a live stylesheet. A policy tight enough
+	#     to be worth having needs to be derived against the real app and tested there, not
+	#     guessed at here, and a wrong one breaks the canvas rather than failing loudly.
+
+	# The same two prefixes vite.config.ts proxies in development. Keeping the studio and
+	# the API on one origin means the browser sends the auth cookie without a CORS
+	# preflight on every request, and WEB_ORIGIN below only has to name this one host.
+	@api path /api/* /health
+	handle @api {
+		reverse_proxy api:3000
+	}
+
+	# ── The studio ────────────────────────────────────────────────────────────────────
+	#
+	# Cache-Control is set inside this block rather than beside @api, and that is load
+	# bearing: a `header` out there would also rewrite the API's own directives, and
+	# `GET /integrations/:id/secret` deliberately answers `no-store`. Scoping it to the
+	# static handler means the two can never argue.
+	handle {
+		root * /srv
+
+		# Vite writes content-hashed filenames into assets/, so those can be cached hard.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+
+		# Everything else served here either *is* index.html or falls back to it, and it
+		# must not be cached, or a deploy leaves browsers loading the previous build's
+		# asset URLs until they happen to revalidate.
+		#
+		# Matched by excluding assets rather than by naming `/`: `path /` is an exact match
+		# in Caddy, and React Router owns the URL space, so /projects/<id> and
+		# /published/<slug> are served this same index.html through try_files below and need
+		# the same header. Naming the root alone covered the one URL a visitor is least
+		# likely to have bookmarked.
+		@shell not path /assets/*
+		header @shell Cache-Control "no-cache"
+
+		# React Router owns the URL space, so anything that is not a real file is the SPA
+		# shell rather than a 404.
+		try_files {path} /index.html
+		file_server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

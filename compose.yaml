@@ -1,0 +1,121 @@
+# Production stack for a single VM — built for an OCI Always Free Ampere A1 instance,
+# but there is nothing Oracle-specific in here. See deploy/README.md for the instance
+# setup, which is where the genuinely OCI-shaped work is.
+#
+# Four services, one of which exits: postgres holds the data, migrate brings the schema
+# up and stops, api serves, and web is Caddy doing TLS + static files + the /api proxy.
+#
+#   docker compose up -d --build
+#
+# Only web publishes ports. Postgres and the API are reachable on the compose network
+# and nowhere else, so the instance's firewall only ever needs 80 and 443 open.
+
+name: ui-builder
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Both migrate and api wait on this. Without it the first migration races the
+    # server's own startup — the same reason ci.yml health-checks its postgres service.
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Runs `prisma migrate deploy` and exits. It is a separate service because the Prisma
+  # CLI is a devDependency: keeping it here means the API image stays a production tree.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: migrate
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: runner
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # Never serve against a schema that has not been migrated — if the migration fails,
+      # the API should not start at all rather than start and throw on every query.
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      # 127.0.0.1 is the default and would make the container unreachable from Caddy.
+      HOST: 0.0.0.0
+      PORT: 3000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      WEB_ORIGIN: ${WEB_ORIGIN}
+      JWT_SECRET: ${JWT_SECRET}
+      INTEGRATION_KEY: ${INTEGRATION_KEY:-}
+      # Stated rather than inferred. NODE_ENV=production above already defaults this to
+      # false, so this line changes nothing today — it is here so that the guard standing
+      # between an integration URL and the instance's metadata service does not depend on
+      # a second variable being right.
+      INTEGRATION_ALLOW_PRIVATE_NETWORK: ${INTEGRATION_ALLOW_PRIVATE_NETWORK:-false}
+      # Object storage is deliberately unset: the asset routes answer 503 and the studio
+      # hides the upload button. Fill in the S3_* block in .env to turn uploads on.
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+      S3_PUBLIC_URL: ${S3_PUBLIC_URL:-}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: serve
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    ports:
+      - '80:80'
+      - '443:443'
+      # Caddy serves HTTP/3 over UDP on the same port.
+      - '443:443/udp'
+    volumes:
+      # Certificates and the ACME account key. Losing this volume means re-issuing on
+      # next boot, which Let's Encrypt rate-limits — so it is named, not anonymous.
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

@@ -16,8 +16,26 @@ export const ApiErrorCode = z.enum([
   'not_found',
   /** Uniqueness or optimistic-lock violation: email taken, slug taken, stale version. */
   'conflict',
+  /**
+   * Too many requests from this caller, too fast. `message` carries how long to wait.
+   *
+   * Its own code rather than a flavour of `validation_error` because it is the one refusal
+   * that becomes untrue on its own: nothing about the request is wrong, and the only useful
+   * advice is to wait. A client that cannot tell it apart cannot say so — which is how the
+   * login limiter came to report a server error (see `plugins/rateLimit.ts`).
+   */
+  'rate_limited',
   /** Unexpected. `message` is deliberately generic; the detail is in the server log. */
   'internal_error',
+  /**
+   * The request was fine; this deployment cannot serve it.
+   *
+   * Distinct from `internal_error` because nothing went wrong and retrying will not help
+   * — an operator has to configure something. Asset upload is the first of these: a
+   * checkout with no object storage boots and works, and says this to the one button that
+   * needs a bucket rather than pretending the upload failed.
+   */
+  'unavailable',
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCode>;
 

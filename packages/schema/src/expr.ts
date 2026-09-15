@@ -15,6 +15,7 @@
  * how a value becomes text, and what counts as a name.
  */
 
+import { querySourceTemplates } from './doc.js';
 import type {
   Json,
   Node,
@@ -421,7 +422,7 @@ function collectFromNode(node: Node): ExpressionSite[] {
   for (const [event, steps] of Object.entries(node.events)) {
     steps.forEach((step, index) => {
       const at = `events.${event}[${index}]`;
-      if (step.kind === 'setState') bound(step.value, `${at}.value`);
+      if (step.kind === 'setState' || step.kind === 'setFilter') bound(step.value, `${at}.value`);
       else if (step.kind === 'navigate') bound(step.to, `${at}.to`);
       else if (step.kind === 'showToast') bound(step.message, `${at}.message`);
       else if (step.kind === 'custom') {
@@ -454,16 +455,11 @@ export function collectExpressions(page: Page): ExpressionSite[] {
   const sites: ExpressionSite[] = collectTreeExpressions(page);
 
   for (const query of page.queries) {
-    sites.push({ source: query.url, form: 'template', path: `queries.${query.name}.url` });
-    if (query.body !== undefined) {
-      sites.push({ source: query.body, form: 'template', path: `queries.${query.name}.body` });
-    }
-    for (const [header, value] of Object.entries(query.headers ?? {})) {
-      sites.push({
-        source: value,
-        form: 'template',
-        path: `queries.${query.name}.headers.${header}`,
-      });
+    // Whatever kind of request it is, `querySourceTemplates` is the one place that knows
+    // which of its fields are templates — so an integration query's `variables` are
+    // collected here without this loop learning what an integration is.
+    for (const { path, source } of querySourceTemplates(query.source)) {
+      sites.push({ source, form: 'template', path: `queries.${query.name}.${path}` });
     }
   }
 
@@ -489,7 +485,7 @@ export function cyclicQueries(queries: readonly QueryDef[]): ReadonlySet<string>
 
   const dependencies = new Map<string, string[]>();
   for (const query of queries) {
-    const sources = [query.url, query.body ?? '', ...Object.values(query.headers ?? {})];
+    const sources = querySourceTemplates(query.source).map((template) => template.source);
     const names = new Set(sources.flatMap((source) => referencedNames(source, 'queries')));
     dependencies.set(
       query.id,

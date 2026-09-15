@@ -13,8 +13,15 @@
  * failure D6 exists to prevent.
  */
 
-import { specFor, type ComponentSpec, type EmitModule } from '@ui-builder/components';
 import {
+  SLOT_TYPE,
+  specFor,
+  symbolAcceptsChildren,
+  type ComponentSpec,
+  type EmitModule,
+} from '@ui-builder/components';
+import {
+  collectExpressions,
   isTruthy,
   nodeClassName,
   stringifyValue,
@@ -23,6 +30,7 @@ import {
   type Json,
   type Node,
   type NodeTree,
+  type Page,
   type PropValue,
   type QueryDef,
   type StateVar,
@@ -38,6 +46,7 @@ import {
   type JsxNode,
 } from './ir.js';
 import {
+  camelCase,
   claimName,
   emitProp,
   handlerName,
@@ -169,8 +178,111 @@ export interface Walk {
   eventTypes: Set<string>;
   needsToasts: boolean;
   needsGoTo: boolean;
+  /**
+   * Every overlay in the tree, keyed by node id — the name its entry takes in the page's
+   * `overlays` object, and the code its initial value is seeded from.
+   *
+   * Built up front rather than as the walk reaches each one, because a button that opens a
+   * modal is very often above that modal in the tree, and a step cannot name a binding the
+   * walk has not decided on yet. Document order is also what keeps the emitted object
+   * stable: moving a button around the canvas must not reorder a declaration.
+   */
+  overlays: Map<string, { name: string; open: PropValue | undefined }>;
+  /**
+   * The subset actually referenced by emitted code. `overlays` lists what the tree
+   * *contains*; a page whose only modal is hidden declares nothing, which is `usedStyles`'
+   * reasoning — an unused binding is a compile error in the generated project.
+   */
+  overlaysUsed: Set<string>;
+  /**
+   * Whether a `Slot` was actually emitted, so the component declares a `children` parameter.
+   *
+   * Tracked as the walk goes rather than read off the tree for `usedStyles`' reason: a slot
+   * inside a hidden subtree emits nothing, and a `children` binding nothing reads is an
+   * unused parameter the generated project's own `noUnusedParameters` rejects.
+   */
+  usesChildren: boolean;
   /** Passed to the root element's `className`. See `ExpandContext.rootExtraClass`. */
   rootExtraClass?: string;
+}
+
+/**
+ * The overlays in a tree, in document order, each with the identifier it will be known by.
+ *
+ * From the layer name rather than the node id, for `handlerName`'s reason: someone reading
+ * the exported page should be able to tell which panel `overlays.deleteDialog` is. A name
+ * that carries no usable letters, or that another overlay already took, falls back the way
+ * every other generated name does.
+ */
+function collectOverlays(
+  tree: NodeTree,
+  symbols: readonly SymbolTarget[],
+): Map<string, { name: string; open: PropValue | undefined }> {
+  const overlays = new Map<string, { name: string; open: PropValue | undefined }>();
+  const taken = new Set<string>();
+  const defs = symbols.map((target) => target.symbol);
+
+  const visit = (id: string): void => {
+    const node = tree.nodes[id];
+    if (!node) return;
+
+    if (specFor(node.type, defs)?.overlay === true) {
+      const stem = camelCase(node.name);
+      overlays.set(node.id, {
+        name: claimName(taken, isIdentifier(stem) ? stem : 'overlay'),
+        open: node.props['open'],
+      });
+    }
+
+    for (const childId of node.children) visit(childId);
+  };
+
+  visit(tree.rootId);
+  return overlays;
+}
+
+/**
+ * The page's overlay state, or null when nothing on it is an overlay that got emitted.
+ *
+ * One object rather than a `useState` per panel, which is `state`'s shape for `state`'s
+ * reason: the names are the author's and the object is what the handlers and the markup
+ * both read, so there is one declaration to look at rather than one per dialog.
+ *
+ * Called at declaration time rather than while collecting, because a seed that is a
+ * binding registers a coercion helper — and registering one for a modal that turned out
+ * to be hidden would leave the generated project with an import it never uses, which its
+ * own `noUnusedLocals` rejects.
+ */
+export function overlayDeclaration(walk: Walk): string | null {
+  if (walk.overlaysUsed.size === 0) return null;
+
+  const entries: string[] = [];
+  for (const [nodeId, overlay] of walk.overlays) {
+    if (!walk.overlaysUsed.has(nodeId)) continue;
+
+    const seed = overlay.open ? emitProp(overlay.open, walk.helpers) : null;
+    // A bound `open` is written out as the expression the author typed and read once, when
+    // the page mounts — exactly what the canvas does with it. An overlay with no stored
+    // value starts open, which is the default `registry.test.ts` holds every overlay to.
+    const code =
+      seed === null
+        ? 'true'
+        : seed.kind === 'code'
+          ? truthyCode(seed.code, true, walk.helpers)
+          : String(isTruthy(seed.value));
+
+    entries.push(`${objectKey(overlay.name)}: ${code}`);
+  }
+
+  return `const [overlays, setOverlays] = useState({ ${entries.join(', ')} });`;
+}
+
+/** Where a step and an element agree on what to call one overlay. */
+function overlayBinding(walk: Walk, nodeId: string): string | null {
+  const overlay = walk.overlays.get(nodeId);
+  if (!overlay) return null;
+  walk.overlaysUsed.add(nodeId);
+  return overlay.name;
 }
 
 export function createWalk(init: Partial<Walk> & Pick<Walk, 'tree'>): Walk {
@@ -189,6 +301,9 @@ export function createWalk(init: Partial<Walk> & Pick<Walk, 'tree'>): Walk {
     eventTypes: new Set(),
     needsToasts: false,
     needsGoTo: false,
+    overlays: collectOverlays(init.tree, init.symbols ?? []),
+    overlaysUsed: new Set(),
+    usesChildren: false,
     ...(init.rootExtraClass === undefined ? {} : { rootExtraClass: init.rootExtraClass }),
   };
 }
@@ -202,7 +317,7 @@ function textOfProp(prop: PropValue, helpers: Helpers): string {
 /**
  * One action step as the statements it runs.
  *
- * A closed union of six, which is what §10 promised would keep the generated handler
+ * A closed union of eight, which is what §10 promised would keep the generated handler
  * readable: this is a translation, not an interpreter shipped to the user. A step naming
  * something that has since been deleted emits nothing and says so — the runtime reports
  * the same thing to the console, and an export has no console anyone is watching.
@@ -237,6 +352,25 @@ function stepStatements(step: ActionStep, node: Node, event: string, walk: Walk)
       ];
     }
 
+    case 'setFilter': {
+      const variable = walk.state.find((candidate) => candidate.id === step.stateId);
+      if (!variable) {
+        walk.warnings.push(`${where}: filters on a variable that no longer exists — step dropped.`);
+        return [];
+      }
+      const held = `current${isIdentifier(variable.name) ? `.${variable.name}` : `[${stringLiteral(variable.name)}]`}`;
+      // The updater form and a comparison against `current`, which is the reducer's rule
+      // in the runtime written out: the value a second click clears has to be the one the
+      // store holds, not the one this render closed over. `picked` is named so the
+      // expression behind it is evaluated once rather than on both sides of the ternary.
+      return [
+        'setState((current) => {',
+        `  const picked = ${textOfProp(step.value, walk.helpers)};`,
+        `  return { ...current, ${objectKey(variable.name)}: ${textCode(held, '', walk.helpers)} === picked ? '' : picked };`,
+        '});',
+      ];
+    }
+
     case 'runQuery': {
       const query = walk.queries.find((candidate) => candidate.id === step.queryId);
       if (!query) {
@@ -256,6 +390,22 @@ function stepStatements(step: ActionStep, node: Node, event: string, walk: Walk)
       walk.needsToasts = true;
       return [`showToast(${textOfProp(step.message, walk.helpers)});`];
 
+    case 'openOverlay':
+    case 'closeOverlay': {
+      const binding = overlayBinding(walk, step.nodeId);
+      const verb = step.kind === 'openOverlay' ? 'opens' : 'closes';
+      if (binding === null) {
+        walk.warnings.push(`${where}: ${verb} an overlay that is not on this page — step dropped.`);
+        return [];
+      }
+      // The updater form, for `toggleState`'s reason: two steps that touch the overlays in
+      // one handler both land, where reading the render's object would make the second
+      // overwrite the first.
+      return [
+        `setOverlays((current) => ({ ...current, ${objectKey(binding)}: ${step.kind === 'openOverlay'} }));`,
+      ];
+    }
+
     case 'custom':
       // The author's own JavaScript, written out as they typed it. Nothing here parses or
       // rewrites it — see the note in `values.ts` about why expression text is portable.
@@ -267,11 +417,175 @@ function stepStatements(step: ActionStep, node: Node, event: string, walk: Walk)
 function stepSources(steps: readonly ActionStep[]): string[] {
   return steps.flatMap((step) => {
     if (step.kind === 'custom') return [step.code];
-    if (step.kind === 'setState') return step.value.kind === 'expr' ? [step.value.code] : [];
+    if (step.kind === 'setState' || step.kind === 'setFilter') {
+      return step.value.kind === 'expr' ? [step.value.code] : [];
+    }
     if (step.kind === 'navigate') return step.to.kind === 'expr' ? [step.to.code] : [];
     if (step.kind === 'showToast') return step.message.kind === 'expr' ? [step.message.code] : [];
     return [];
   });
+}
+
+/** Every piece of template source a query's *request* is written from. */
+function requestSources(query: QueryDef): string[] {
+  const source = query.source;
+  if (source.kind === 'url') {
+    return [source.url, source.body ?? '', ...Object.values(source.headers ?? {})];
+  }
+  if (source.kind === 'integration') return Object.values(source.variables ?? {});
+  return [source.datasetId, source.groupId ?? '', source.dax];
+}
+
+/**
+ * Handlers that set a filter and then run a query that reads it.
+ *
+ * The step order says "filter, then fetch"; what runs is "fetch with the filter it had
+ * before". Steps see the scope as it was when the event fired — the interpreter says so
+ * and the generated handler is the same, because `queries.x.run()` sends the request this
+ * render built and React has not re-rendered yet. It is not a bug in either one, and it is
+ * invisible: the page fetches, the page updates, and the numbers are one click stale.
+ *
+ * The answer is to delete the step. A query that runs on load re-sends itself whenever the
+ * request it describes changes, which is the whole reason a filter bar needs no wiring —
+ * so the write alone is the cross-filter, and the `runQuery` after it is both redundant and
+ * wrong. Said rather than fixed, because fixing it means a `run` that takes the request as
+ * an argument, which is a different feature (and the one pagination is waiting on).
+ *
+ * **`setFilter` only**, deliberately. `setState` followed by a query that reads the same
+ * variable is the identical mechanic, and is *not* warned about, because there the write
+ * is the author's own value and they can compensate for the ordering — `{{ state.count + 1 }}`
+ * in the request, which reads the stale variable on purpose and sends the right number. A
+ * check that could not tell those apart would fire on correct pages. A filter has no such
+ * form: what it writes is the category that was clicked, and there is nothing to add to it.
+ */
+function staleQueryWarnings(steps: readonly ActionStep[], where: string, walk: Walk): string[] {
+  const written = new Set<string>();
+  const warnings: string[] = [];
+
+  for (const step of steps) {
+    if (step.kind === 'setFilter') {
+      const variable = walk.state.find((candidate) => candidate.id === step.stateId);
+      if (variable) written.add(variable.name);
+      continue;
+    }
+
+    if (step.kind !== 'runQuery' || written.size === 0) continue;
+
+    const query = walk.queries.find((candidate) => candidate.id === step.queryId);
+    if (!query) continue;
+
+    const text = requestSources(query).join('\n');
+    const stale = [...written].filter((name) => text.includes(`state.${name}`));
+    if (stale.length === 0) continue;
+
+    warnings.push(
+      `${where}: filters on ${stale.map((name) => `state.${name}`).join(' and ')} and then ` +
+        `runs "${query.name}", whose request reads it — a step cannot see a write made ` +
+        `beside it, so the request will carry the previous value. Drop the step: a query ` +
+        `that runs on load re-sends itself when its request changes.`,
+    );
+  }
+
+  return warnings;
+}
+
+/**
+ * `queries.<name>.data` with a member access hanging off it that is not optional.
+ *
+ * The capture is the query's name, so the guard checks below can ask about that query
+ * rather than about queries in general.
+ */
+const QUERY_READ = /\bqueries\.([A-Za-z_$][\w$]*)\.data\s*(?:\.|\[)/g;
+
+/**
+ * Whether the expression itself already answers "what if it has not answered yet?".
+ *
+ * `data && data.items`, `data ? data.items : []` and a mention of `loading` are all the
+ * author saying so. `data?.items` never reaches here — the regex above cannot match an
+ * optional access, which is the point of writing it that way.
+ */
+function guardsInSource(source: string, name: string): boolean {
+  const escaped = `queries\\.${name}\\.data`;
+  return (
+    new RegExp(`${escaped}\\s*(?:&&|\\?(?!\\.))`).test(source) ||
+    source.includes(`queries.${name}.loading`)
+  );
+}
+
+/**
+ * Whether a `showIf` above this node already keeps it off the page until the query answers.
+ *
+ * The node's own counts as well as an ancestor's: a condition emits `{cond && <el … />}`,
+ * so every attribute inside that element — and inside everything below it — is evaluated
+ * only when the condition held. Any mention of the query is taken as a guard rather than
+ * only `data`, because `{{ !queries.rows.loading }}` guards exactly as well and a check
+ * that insisted on one spelling would fire on a page that is already careful.
+ */
+function guardedByCondition(tree: NodeTree, nodeId: string, name: string): boolean {
+  let current: Node | undefined = tree.nodes[nodeId];
+
+  while (current) {
+    if (current.showIf?.kind === 'expr' && current.showIf.code.includes(`queries.${name}`)) {
+      return true;
+    }
+    current = current.parentId === null ? undefined : tree.nodes[current.parentId];
+  }
+
+  return false;
+}
+
+/**
+ * Bindings that read *through* a query's result without saying what to do before it answers.
+ *
+ * `queries.rows.data` is `undefined` until the request comes back, so
+ * `{{ queries.rows.data.items }}` throws on the first render. The canvas survives that —
+ * the evaluator catches per expression, the node renders with the prop unset and wears a
+ * badge — and the exported page does not: it has no per-node boundary, cannot grow one
+ * without emitting elements the canvas does not (D6), and so goes blank.
+ *
+ * Said rather than fixed, for `staleQueryWarnings`' reason one line down: fixing it means
+ * wrapping every emitted binding in a guard, which rewrites the shape of the author's own
+ * code to compensate for something they can say themselves. `{{ queries.rows.data?.items }}`
+ * is ordinary JavaScript, works identically on both sides, and is what this warning asks
+ * for.
+ *
+ * **Render-time sites only.** An expression in an action step runs when someone clicks,
+ * long after the request has answered, and a throw there costs that one click rather than
+ * the page — so warning about it would fire on pages that are fine.
+ */
+export function unguardedQueryReads(page: Page): string[] {
+  const warnings: string[] = [];
+
+  for (const site of collectExpressions(page)) {
+    if (site.form !== 'template' || site.path.startsWith('events.')) continue;
+
+    const seen = new Set<string>();
+    for (const match of site.source.matchAll(QUERY_READ)) {
+      const name = match[1];
+      // The pattern's only group is the query's name, so this cannot be missing — but the
+      // index signature says it can, and a `!` here would be a claim rather than a check.
+      if (name === undefined) continue;
+      if (seen.has(name) || guardsInSource(site.source, name)) continue;
+      if (site.nodeId !== undefined && guardedByCondition(page, site.nodeId, name)) continue;
+      seen.add(name);
+
+      const node = site.nodeId === undefined ? undefined : page.nodes[site.nodeId];
+      const where = node === undefined ? site.path : `"${node.name}" (${node.id}) · ${site.path}`;
+      // A request has nowhere to hide: only a node can be held back by a condition.
+      const remedy =
+        node === undefined
+          ? `Write it as queries.${name}.data?.… instead.`
+          : `Write it as queries.${name}.data?.… instead, or hide the node until the ` +
+            `query answers.`;
+
+      warnings.push(
+        `${where}: reads through queries.${name}.data, which is undefined until the ` +
+          `request answers — the canvas renders the fallback, this page throws. ${remedy}`,
+      );
+    }
+  }
+
+  return warnings;
 }
 
 /**
@@ -302,14 +616,26 @@ function emitHandlers(
     const body = steps.flatMap((step) => stepStatements(step, node, event, walk));
     if (body.length === 0) continue;
 
+    walk.warnings.push(
+      ...staleQueryWarnings(steps, `"${node.name}" (${node.id}) · ${event}`, walk),
+    );
+
     const name = claimName(walk.names, handlerName(node.name, event));
     const asynchronous = body.some((line) => line.startsWith('await '));
 
     let parameter = '';
     if (readsEvent(stepSources(steps))) {
-      const eventType = EVENT_TYPES[event] ?? 'SyntheticEvent';
-      walk.eventTypes.add(eventType);
-      parameter = `event: ${eventType}<${ELEMENT_TYPES[tag] ?? 'HTMLElement'}>`;
+      // A component that passes a value of its own says so in its spec, and then the
+      // element the handler landed on says nothing about what `event` is — a Chart's
+      // `onSelect` is a mark, not a MouseEvent on the div the chart happens to draw in.
+      const payload = spec.eventPayloads?.[event];
+      if (payload === undefined) {
+        const eventType = EVENT_TYPES[event] ?? 'SyntheticEvent';
+        walk.eventTypes.add(eventType);
+        parameter = `event: ${eventType}<${ELEMENT_TYPES[tag] ?? 'HTMLElement'}>`;
+      } else {
+        parameter = `event: ${payload}`;
+      }
     }
 
     statements.push(
@@ -392,15 +718,57 @@ function instanceAttr(node: Node, symbol: SymbolDef, name: string, walk: Walk): 
 }
 
 /**
- * An instance as `<ProductCard className={…} title="…" />`.
+ * A slot as `{children}`, or `{children ?? (…)}` when the component was built with a
+ * fallback inside it — PLAN.md §12.
  *
- * No children: what is inside a symbol belongs to the symbol, so the instance node has
- * none to emit. The class is the instance's own rules, handed to the component, which
- * wears it on the element its root renders — the wrapper element this avoids would be a
- * box in the middle of someone's layout that exists only because the builder needed
- * somewhere to hang it (see `classAttr` in `expand.ts`).
+ * No element, which is the whole point: this is the position a placement's content is
+ * dropped into, and what a person writing the component by hand would write. The runtime
+ * renders the same three cases with the same absence of a wrapper, so the canvas and the
+ * export agree by construction (`PageRenderer`, and D6).
+ *
+ * A slot's own children are the *fallback* rather than its content, so they are walked
+ * here and not by the caller — and they are walked in this tree, because that is where the
+ * author put them. The content that displaces them belongs to whoever wrote the placement
+ * and is emitted there, by `walkInstance`.
  */
-function walkInstance(node: Node, symbolId: string, walk: Walk): JsxNode | null {
+function walkSlot(node: Node, walk: Walk, statements: string[]): JsxNode | null {
+  walk.usesChildren = true;
+
+  const fallback = node.children.flatMap((childId) => {
+    const child = walkNode(childId, walk, statements);
+    return child ? [child] : [];
+  });
+
+  if (fallback.length === 0) return { kind: 'expr', code: 'children' };
+
+  return {
+    kind: 'fallback',
+    code: 'children',
+    child: fallback.length === 1 ? fallback[0]! : { kind: 'fragment', children: fallback },
+  };
+}
+
+/**
+ * An instance as `<ProductCard className={…} title="…" />`, or with its own content
+ * between the tags when the component has a slot to put it in.
+ *
+ * The class is the instance's own rules, handed to the component, which wears it on the
+ * element its root renders — the wrapper element this avoids would be a box in the middle
+ * of someone's layout that exists only because the builder needed somewhere to hang it
+ * (see `classAttr` in `expand.ts`).
+ *
+ * Children are emitted *here*, in the caller's tree, which is what passing children means:
+ * they are the caller's nodes and their bindings read the caller's state. A component with
+ * no slot is given none — its spec answers `acceptsChildren: false`, so the drag rules
+ * never let any land, and a document that arrived with some would be emitting content the
+ * component has nowhere to render.
+ */
+function walkInstance(
+  node: Node,
+  symbolId: string,
+  walk: Walk,
+  statements: string[],
+): JsxNode | null {
   const target = walk.symbols.find((candidate) => candidate.symbol.id === symbolId);
   if (!target) {
     walk.warnings.push(
@@ -426,7 +794,14 @@ function walkInstance(node: Node, symbolId: string, walk: Walk): JsxNode | null 
     if (attr) attrs.push(attr);
   }
 
-  return element(target.name, attrs);
+  const children = symbolAcceptsChildren(target.symbol)
+    ? node.children.flatMap((childId) => {
+        const child = walkNode(childId, walk, statements);
+        return child ? [child] : [];
+      })
+    : [];
+
+  return element(target.name, attrs, children);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -493,8 +868,10 @@ export function walkNode(
 
   let expanded: JsxNode | null;
 
-  if (symbolId !== null) {
-    expanded = walkInstance(node, symbolId, walk);
+  if (node.type === SLOT_TYPE) {
+    expanded = walkSlot(node, walk, inner);
+  } else if (symbolId !== null) {
+    expanded = walkInstance(node, symbolId, walk, inner);
   } else {
     const children = spec.acceptsChildren
       ? node.children.flatMap((childId) => {
@@ -533,6 +910,22 @@ export function walkNode(
   if (element_) {
     for (const handler of emitHandlers(node, spec, element_.tag, walk, inner)) {
       element_.attrs.push({ name: handler.name, kind: 'expr', code: handler.code });
+    }
+
+    // The two props `Overlay` takes that no template can carry: one is page state and the
+    // other is what changes it. Pushed after the handlers so an author's own `onClick` on
+    // a modal sits beside them rather than being displaced — `Overlay` composes the two
+    // rather than choosing between them.
+    if (spec.overlay) {
+      const binding = overlayBinding(walk, node.id);
+      if (binding !== null) {
+        element_.attrs.push({ name: 'open', kind: 'expr', code: `overlays.${binding}` });
+        element_.attrs.push({
+          name: 'onClose',
+          kind: 'expr',
+          code: `() => setOverlays((current) => ({ ...current, ${objectKey(binding)}: false }))`,
+        });
+      }
     }
   }
 

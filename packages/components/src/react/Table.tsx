@@ -1,4 +1,4 @@
-import { parseTable } from '../derive.js';
+import { buildTable } from '../derive.js';
 import { asBoolean, asString } from '../spec.js';
 import { SortableRows } from './SortableRows.js';
 import type { RenderedProps } from './props.js';
@@ -6,8 +6,14 @@ import type { RenderedProps } from './props.js';
 export interface TableProps extends RenderedProps {
   /** The heading line — cells separated by `|`. Empty means a table with no header. */
   columns?: string;
-  /** One row per line, cells separated by `|`. */
-  rows?: string;
+  /**
+   * The rows. A string of `|`-separated lines when typed out, or an array when bound to a
+   * query — `unknown` because a bound prop is whatever the expression evaluated to, and
+   * `buildTable` is the one place that decides which it got.
+   */
+  rows?: unknown;
+  /** Which key of each row fills each column. Only read when `rows` is an array. */
+  fields?: string;
   caption?: string;
   /** Gives every row a handle and lets the reader drag them into a new order. */
   reorderable?: boolean;
@@ -39,6 +45,7 @@ export interface TableProps extends RenderedProps {
 export function Table({
   columns,
   rows,
+  fields,
   caption,
   reorderable,
   striped,
@@ -50,7 +57,7 @@ export function Table({
   readOnly,
   ...rest
 }: TableProps) {
-  const data = parseTable(asString(columns), asString(rows));
+  const data = buildTable(asString(columns), asString(fields), rows);
   const title = asString(caption);
   const empty = asString(emptyText);
 

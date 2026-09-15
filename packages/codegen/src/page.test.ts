@@ -6,7 +6,7 @@
  * bytes moved".
  */
 
-import { getSpec, SPECS } from '@ui-builder/components';
+import { getSpec, SLOT_TYPE, SPECS } from '@ui-builder/components';
 import {
   DEFAULT_THEME,
   makeNode,
@@ -37,8 +37,21 @@ describe('templates', () => {
     // The fallback in `walkNode` exists for robustness, not as somewhere to leave a
     // component. Without this, adding a component to the palette would silently export
     // it as a bare tag with none of its classes or attributes.
-    const missing = SPECS.filter((spec) => spec.codegen.emit === undefined).map((spec) => spec.key);
+    //
+    // `Slot` is the one exemption and it is structural rather than an oversight: it is
+    // special-cased into `{children}` before any template is expanded, exactly as a symbol
+    // instance is, so it can never reach the fallback this test guards. The case below is
+    // what holds it to that — an exemption nothing checks is just a hole.
+    const missing = SPECS.filter(
+      (spec) => spec.key !== SLOT_TYPE && spec.codegen.emit === undefined,
+    ).map((spec) => spec.key);
     expect(missing).toEqual([]);
+  });
+
+  test('a slot emits its caller’s children rather than an element of its own', () => {
+    const { tsx } = onePage(SLOT_TYPE);
+    expect(tsx).toContain('{children}');
+    expect(tsx).not.toContain('ub-slot');
   });
 
   test('the root element carries the library class and the node class', () => {
@@ -316,20 +329,31 @@ describe('conditional subtrees', () => {
     expect(tsx).not.toContain('ub-table-grip');
   });
 
-  test('a table with no rows takes the plain body whatever the reorder switch says', () => {
-    // There is nothing to reorder, and the line standing in for the rows is not a row
-    // anyone should be able to pick up.
-    const { tsx, modules } = onePage('Table', {
+  test('an empty reorderable table still says it has nothing in it', () => {
+    /*
+     * This used to assert the opposite — that an empty table took the plain `<tbody>`
+     * whatever the reorder switch said, on the grounds that the line standing in for the
+     * rows is not a row anyone should be able to pick up.
+     *
+     * The rule went away with the `rows: set` half of `REORDERS`. Two things paid for it:
+     * `SortableRows` picks up only rows carrying `data-grip`, so the stand-in row was
+     * never draggable anyway; and once `rows` can be bound to a query, "is it set" is not
+     * answerable while generating, which made the condition a run-time check and emitted
+     * the entire body twice in every export of a table fed by an API.
+     *
+     * What is left is a table that ships the reorder component while it happens to be
+     * empty. It is dead weight for exactly as long as the table has no rows.
+     */
+    const { tsx } = onePage('Table', {
       columns: 'Name | Role | Status',
       rows: '',
       reorderable: true,
       emptyText: 'No rows yet.',
     });
 
-    expect(modules).toEqual([]);
-    expect(tsx).not.toContain('SortableRows');
     // Four, not three: the column of handles is still one of the table's columns.
     expect(tsx).toContain('<td className="ub-table-empty" colSpan={4}>No rows yet.</td>');
+    expect(tsx).not.toContain('data-grip');
   });
 
   test('an empty table with nothing to say about it emits no stand-in row', () => {
@@ -361,6 +385,46 @@ describe('conditional subtrees', () => {
     expect(tsx).toContain('<td className="ub-table-cell" />');
   });
 
+  test('a tab strip marks exactly one tab, falling back to the first', () => {
+    const { tsx } = onePage('Tabs', { items: 'a | Alpha\nb | Beta\nc', active: 'b' });
+
+    expect(tsx).toContain(
+      '<button type="button" className="ub-tab" role="tab" aria-selected="false">Alpha</button>',
+    );
+    expect(tsx).toContain('aria-selected="true" data-active=""');
+    // A bare line is its own label, as everywhere else options are authored.
+    expect(tsx).toContain('>c</button>');
+    expect(tsx.match(/data-active/g)).toHaveLength(1);
+
+    // Unlike a nav, which marks nothing when the current page is elsewhere: a strip with
+    // no tab selected reads as a rendering fault, so one of them has to be current.
+    const stray = onePage('Tabs', { items: 'a | Alpha\nb | Beta', active: '/nowhere' }).tsx;
+    expect(stray.match(/data-active/g)).toHaveLength(1);
+    // The printer puts a long attribute list on its own line, hence the two halves.
+    expect(stray).toContain('aria-selected="true" data-active="">');
+    expect(stray).toMatch(/data-active="">\s*Alpha/);
+  });
+
+  test('an accordion expands to details rows, opening at most the first', () => {
+    const { tsx } = onePage('Accordion', {
+      items: 'First | Its answer\nSecond | Another\nJust a title',
+      openFirst: true,
+    });
+
+    expect(tsx).toContain('<details className="ub-accordion-item" open>');
+    expect(tsx).toContain('<summary className="ub-accordion-summary">First</summary>');
+    expect(tsx).toContain('<div className="ub-accordion-body">Its answer</div>');
+    // A row with nothing under it is a summary and no panel, rather than an empty one
+    // holding its padding open.
+    expect(tsx).toContain('<summary className="ub-accordion-summary">Just a title</summary>');
+    expect(tsx.match(/ub-accordion-body/g)).toHaveLength(2);
+    expect(tsx.match(/ open>/g)).toHaveLength(1);
+
+    expect(
+      onePage('Accordion', { items: 'First | Its answer', openFirst: false }).tsx,
+    ).not.toContain(' open>');
+  });
+
   test('a table with no header line emits no thead', () => {
     const { tsx } = onePage('Table', { columns: '', rows: 'Ada | Owner', reorderable: false });
 
@@ -389,6 +453,86 @@ describe('the page walk', () => {
     // Text is `isVoid`, so a child could only get there by hand-editing a document.
     // The runtime ignores it; so must the export, and the two must agree.
     expect(getSpec('Text')!.acceptsChildren).toBe(false);
+  });
+});
+
+/*
+ * What a *request* mentions is part of the page, even though none of it reaches the markup.
+ *
+ * Both of these emitted a project that referenced a name it never declared, which `tsc` in
+ * the exported project catches and a snapshot does not — the bytes were stable, they just
+ * were not valid TypeScript. See `--doc powerbi` in `scripts/emit.mts`.
+ */
+describe('names a query’s own request brings into scope', () => {
+  function pageReading(url: string, extra: Partial<Parameters<typeof makePage>[0]> = {}) {
+    const node = makeNode({ id: 'x', type: 'Box', name: 'Box' });
+    return generatePage(
+      makePage({
+        id: 'p',
+        name: 'Home',
+        path: '/',
+        rootId: 'x',
+        nodes: { x: node },
+        queries: [
+          { id: 'q', name: 'only', runOnLoad: true, source: { kind: 'url', method: 'GET', url } },
+        ],
+        ...extra,
+      }),
+      DEFAULT_THEME,
+    );
+  }
+
+  test('state read only by a query’s URL is still declared', () => {
+    const { tsx } = pageReading('https://example.test/?q={{ state.term }}', {
+      state: [{ id: 'sv', name: 'term', type: 'string', initial: '' }],
+    });
+
+    expect(tsx).toContain('state.term');
+    expect(tsx).toMatch(/const \[state\] = useState/);
+  });
+
+  test('a query whose URL reads another query gets the object it reads', () => {
+    const node = makeNode({ id: 'x', type: 'Box', name: 'Box' });
+    const { tsx } = generatePage(
+      makePage({
+        id: 'p',
+        name: 'Home',
+        path: '/',
+        rootId: 'x',
+        nodes: { x: node },
+        queries: [
+          {
+            id: 'a',
+            name: 'first',
+            runOnLoad: true,
+            source: { kind: 'url', method: 'GET', url: 'https://example.test/a' },
+          },
+          {
+            id: 'b',
+            name: 'second',
+            runOnLoad: true,
+            source: {
+              kind: 'url',
+              method: 'GET',
+              url: 'https://example.test/b?id={{ queries.first.data.id }}',
+            },
+          },
+        ],
+      }),
+      DEFAULT_THEME,
+    );
+
+    expect(tsx).toContain('queries.first.data.id');
+    expect(tsx).toContain('const queries = {');
+  });
+
+  test('a page nothing reads from still declares neither', () => {
+    // The other half: the branches above must not fire on an ordinary page, or every
+    // export grows a `state` and a `queries` object that `noUnusedLocals` then rejects.
+    const { tsx } = pageReading('https://example.test/');
+
+    expect(tsx).not.toContain('useState');
+    expect(tsx).not.toContain('const queries = {');
   });
 });
 

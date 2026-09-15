@@ -1,10 +1,17 @@
-import { parseOptions } from '../derive.js';
+import { buildOptions } from '../derive.js';
 import { asBoolean, asString } from '../spec.js';
 import { selectBinding, type RenderedProps } from './props.js';
 
 export interface SelectProps extends RenderedProps {
-  /** One option per line. `value | Label` splits the two; a bare line is both. */
-  options?: string;
+  /**
+   * The choices. One option per line (`value | Label` splits the two; a bare line is
+   * both), or an array when bound to a query — `unknown` because a bound prop is whatever
+   * the expression produced, and `buildOptions` is the one place that decides which.
+   */
+  options?: unknown;
+  /** Which key of each item is the value / the label. Only read when `options` is an array. */
+  valueField?: string;
+  labelField?: string;
   value?: string;
   placeholder?: string;
   disabled?: boolean;
@@ -28,6 +35,8 @@ export interface SelectProps extends RenderedProps {
  */
 export function Select({
   options,
+  valueField,
+  labelField,
   value,
   placeholder,
   disabled,
@@ -37,7 +46,7 @@ export function Select({
   ...rest
 }: SelectProps) {
   const isDisabled = asBoolean(disabled);
-  const items = parseOptions(asString(options));
+  const items = buildOptions(options, asString(valueField), asString(labelField));
   const hint = asString(placeholder);
   const selected = asString(value);
 

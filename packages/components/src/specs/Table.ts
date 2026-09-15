@@ -7,16 +7,18 @@ import type { ComponentSpec } from '../spec.js';
  *
  * Written once and denied once rather than spelled out twice: the two `<tbody>` branches
  * below have to be exact opposites, and two conditions that merely look opposite are two
- * conditions a later edit can leave both true. A table with no rows takes the plain body
- * whatever `reorderable` says — there is nothing to reorder, and the empty line that
- * stands in its place is not a row someone should be able to pick up.
+ * conditions a later edit can leave both true.
+ *
+ * It used to also require `rows` to be set, so that an empty table took the plain body —
+ * "the empty line that stands in its place is not a row someone should be able to pick
+ * up". That clause is gone, for two reasons. It was defending against something the
+ * markup already prevents: `SortableRows` picks up only rows carrying `data-grip`, and the
+ * empty row has no grip to carry. And once `rows` can be *bound*, "is it set" stops being
+ * answerable while generating — so the condition became a run-time check, and the whole
+ * body was emitted twice, once under each branch, in every export of a reorderable table
+ * fed by a query.
  */
-const REORDERS: EmitCondition = {
-  all: [
-    { prop: 'reorderable', when: 'true' },
-    { prop: 'rows', when: 'set' },
-  ],
-};
+const REORDERS: EmitCondition = { prop: 'reorderable', when: 'true' };
 
 export const TableSpec: ComponentSpec = {
   key: 'Table',
@@ -31,10 +33,29 @@ export const TableSpec: ComponentSpec = {
   props: [
     { name: 'columns', label: 'Columns', type: 'string', placeholder: 'Name | Role | Status' },
     {
+      // `data` rather than `text`: bound to a query this holds the rows themselves, and
+      // `coerceToProp` narrowing a `text` prop would hand `buildTable` the JSON of the
+      // array instead of the array — a table that reads as its own payload on the canvas
+      // and as a table in the export.
       name: 'rows',
       label: 'Rows',
-      type: 'text',
+      type: 'data',
       placeholder: 'One row per line, cells split by |',
+    },
+    /*
+     * Which key of each row goes in which column, aligned with `columns`.
+     *
+     * Only meaningful once `rows` is bound to an array — a table typed out as text already
+     * says what is in each column by position. Kept as a separate prop from `columns`
+     * because a heading and a field name are different things that happen to line up:
+     * folding them into `Full name:name` would make a heading with a colon in it unsayable.
+     * Left empty, the rows' own keys are used in the order the data has them.
+     */
+    {
+      name: 'fields',
+      label: 'Fields',
+      type: 'string',
+      placeholder: 'name | role | status',
     },
     { name: 'caption', label: 'Caption', type: 'string', placeholder: 'What this table shows' },
     { name: 'reorderable', label: 'Drag to reorder', type: 'boolean' },
@@ -54,6 +75,7 @@ export const TableSpec: ComponentSpec = {
   defaultProps: {
     columns: 'Name | Role | Status',
     rows: 'Ada Lovelace | Owner | Active\nGrace Hopper | Editor | Active\nAlan Turing | Viewer | Invited',
+    fields: '',
     caption: '',
     // On by default: it is what someone reaching for this component came for, and a
     // feature nobody sees until they find a checkbox is a feature nobody finds.
@@ -83,14 +105,37 @@ export const TableSpec: ComponentSpec = {
           children: [{ text: { prop: 'caption', as: 'string' } }],
         },
         {
-          when: { prop: 'columns', when: 'set' },
+          /*
+           * Either a heading line or a field list is enough to draw a header.
+           *
+           * `fields` earns its place here because a table bound to a query with no
+           * headings written still has column names worth showing — the field names — and
+           * a headerless grid of values is markedly harder to read than one labelled with
+           * what the API calls things. A table typed out as text has no `fields`, so this
+           * is exactly the old condition for every document that predates data binding.
+           */
+          when: {
+            any: [
+              { prop: 'columns', when: 'set' },
+              { prop: 'fields', when: 'set' },
+            ],
+          },
           tag: 'thead',
           class: 'ub-table-head',
           children: [
             {
               tag: 'tr',
               class: 'ub-table-row',
-              children: [{ tableHead: { columns: 'columns', rows: 'rows', grip: 'reorderable' } }],
+              children: [
+                {
+                  tableHead: {
+                    columns: 'columns',
+                    rows: 'rows',
+                    fields: 'fields',
+                    grip: 'reorderable',
+                  },
+                },
+              ],
             },
           ],
         },
@@ -101,7 +146,22 @@ export const TableSpec: ComponentSpec = {
           // the same table — one of them can be picked up.
           tag: 'tbody',
           from: SORTABLE_ROWS,
-          children: [{ tableRows: { columns: 'columns', rows: 'rows', grip: 'reorderable' } }],
+          children: [
+            {
+              tableRows: {
+                columns: 'columns',
+                rows: 'rows',
+                fields: 'fields',
+                grip: 'reorderable',
+                // The reorderable body has to be able to say it is empty too. It did not
+                // need to while `REORDERS` also required `rows` to be set — an empty table
+                // was always the other branch — and dropping that clause is what made this
+                // the branch an empty reorderable table takes. Without it the table
+                // rendered as a bare `<SortableRows />` and the message vanished.
+                empty: 'emptyText',
+              },
+            },
+          ],
         },
         {
           when: { not: REORDERS },
@@ -111,6 +171,7 @@ export const TableSpec: ComponentSpec = {
               tableRows: {
                 columns: 'columns',
                 rows: 'rows',
+                fields: 'fields',
                 grip: 'reorderable',
                 empty: 'emptyText',
               },

@@ -21,19 +21,26 @@ import {
   createStateVar,
   HTTP_METHODS,
   isValidVarName,
+  parseTemplate,
+  powerbiExecuteUrl,
   removeQuery,
   removeStateVar,
   stateVarUsage,
   updateQuery,
   updateStateVar,
+  type ApiIntegrationSummary,
+  type IntegrationQuerySource,
   type Json,
   type Page,
+  type PowerBiQuerySource,
   type QueryDef,
   type StateVar,
+  type UrlQuerySource,
 } from '@ui-builder/schema';
 import { cyclicQueries } from '@ui-builder/runtime';
-import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
-import { useId, useMemo, useState } from 'react';
+import { AlertTriangle, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
+import { useIntegrations } from '../../api/queries.js';
 import { TemplateField } from '../expressions/ExpressionField.js';
 import { scopeSuggestions } from '../expressions/scope.js';
 import {
@@ -46,6 +53,111 @@ import { useStudio } from '../state/context.js';
 import styles from './Data.module.css';
 
 const VAR_TYPES: readonly StateVarType[] = ['string', 'number', 'boolean', 'json'];
+
+/* -------------------------------------------------------------------------- */
+/* Groups                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/** Which groups are folded, as a plain array of titles in one key. */
+const CLOSED_KEY = 'ui-builder.data.closed';
+
+function readClosed(): string[] {
+  try {
+    const raw = window.localStorage.getItem(CLOSED_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((title) => typeof title === 'string') : [];
+  } catch {
+    // A disabled or full storage must not stop the panel rendering.
+    return [];
+  }
+}
+
+function writeClosed(titles: string[]): void {
+  try {
+    window.localStorage.setItem(CLOSED_KEY, JSON.stringify(titles));
+  } catch {
+    /* Not worth surfacing: the panel still works, it just forgets. */
+  }
+}
+
+/**
+ * One foldable half of the panel.
+ *
+ * Both halves are open lists of cards that grow without limit, so a page with a dozen
+ * queries pushes State off the top of the scroller and a page with a dozen variables does
+ * the same to Queries. Folding the one you are not working in is the whole point, and the
+ * count stays in the header so a closed group still says how much is behind it.
+ *
+ * Open-ness is a per-machine preference rather than document state — the same call the
+ * inspector's sections make — so it is remembered across a reload without becoming an undo
+ * step or something two people editing the same page could disagree about.
+ *
+ * Add lives beside the toggle rather than inside the body, because a group with nothing in
+ * it is exactly when you want it; pressing it while folded opens the group, since the point
+ * of adding a card is to fill it in.
+ */
+function Group({
+  title,
+  count,
+  addLabel,
+  onAdd,
+  children,
+}: {
+  title: string;
+  count: number;
+  /** The noun on the add button — "Variable", "Query". */
+  addLabel: string;
+  onAdd: () => void;
+  children: ReactNode;
+}) {
+  const { writable } = useStudio();
+  const [closed, setClosed] = useState(() => readClosed().includes(title));
+
+  const fold = (next: boolean) => {
+    setClosed(next);
+    const titles = readClosed().filter((one) => one !== title);
+    writeClosed(next ? [...titles, title] : titles);
+  };
+
+  return (
+    <section className={styles.group}>
+      <header className={styles.groupHead}>
+        {/* The button is inside the heading rather than around it: a heading is not
+            phrasing content, so a `<button>` wrapping one is markup no browser owes us an
+            accessibility tree for. */}
+        <h3 className={styles.groupTitle}>
+          <button
+            type="button"
+            className={styles.groupToggle}
+            aria-expanded={!closed}
+            onClick={() => fold(!closed)}
+          >
+            <span className={styles.groupChevron} aria-hidden>
+              {closed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+            </span>
+            {title}
+            {count > 0 ? <span className={styles.groupCount}>{count}</span> : null}
+          </button>
+        </h3>
+
+        <button
+          type="button"
+          className={styles.add}
+          disabled={!writable}
+          onClick={() => {
+            if (closed) fold(false);
+            onAdd();
+          }}
+        >
+          <Plus size={12} aria-hidden />
+          {addLabel}
+        </button>
+      </header>
+
+      {closed ? null : children}
+    </section>
+  );
+}
 
 /**
  * A name field that refuses rather than throws.
@@ -236,27 +348,19 @@ function StateCard({ page, variable }: { page: Page; variable: StateVar }) {
 }
 
 function StateList({ page }: { page: Page }) {
-  const { edit, writable } = useStudio();
+  const { edit } = useStudio();
 
   return (
-    <section className={styles.group}>
-      <header className={styles.groupHead}>
-        <h3 className={styles.groupTitle}>State</h3>
-        <button
-          type="button"
-          className={styles.add}
-          disabled={!writable}
-          onClick={() =>
-            edit((current) => addStateVar(current, createStateVar(current, { name: 'value' })))
-          }
-        >
-          <Plus size={12} aria-hidden />
-          Variable
-        </button>
-      </header>
-
+    <Group
+      title="State"
+      count={page.state.length}
+      addLabel="Variable"
+      onAdd={() =>
+        edit((current) => addStateVar(current, createStateVar(current, { name: 'value' })))
+      }
+    >
       {page.state.length === 0 ? (
-        <p className={styles.empty}>
+        <p className={styles.empty} data-selectable>
           No variables yet. A variable is a value the page holds — a counter, a search box, whether
           a panel is open — and any field can read one with <code>{'{{ state.name }}'}</code>.
         </p>
@@ -267,7 +371,7 @@ function StateList({ page }: { page: Page }) {
           ))}
         </ul>
       )}
-    </section>
+    </Group>
   );
 }
 
@@ -275,16 +379,19 @@ function StateList({ page }: { page: Page }) {
 /* Queries                                                                     */
 /* -------------------------------------------------------------------------- */
 
-/** Headers, edited as the pairs they are. */
-function HeadersEditor({ query }: { query: QueryDef }) {
+/** Headers, edited as the pairs they are. Only a URL query has its own. */
+function HeadersEditor({ query, source }: { query: QueryDef; source: UrlQuerySource }) {
   const { page, edit, writable } = useStudio();
-  const entries = Object.entries(query.headers ?? {});
+  const entries = Object.entries(source.headers ?? {});
 
   const write = (next: [string, string][]) => {
     const headers = Object.fromEntries(next.filter(([name]) => name !== ''));
     edit((current) =>
       updateQuery(current, query.id, {
-        headers: Object.keys(headers).length === 0 ? undefined : headers,
+        source: {
+          ...source,
+          ...(Object.keys(headers).length === 0 ? { headers: undefined } : { headers }),
+        },
       }),
     );
   };
@@ -349,15 +456,394 @@ function HeadersEditor({ query }: { query: QueryDef }) {
   );
 }
 
-function QueryCard({ page, query, cyclic }: { page: Page; query: QueryDef; cyclic: boolean }) {
+/**
+ * The request half of a query, when it calls a saved workspace endpoint.
+ *
+ * There is very little to edit here, and that is the point of the whole feature: the
+ * method, the path, the headers and the body were written once in workspace settings, so a
+ * page chooses a call and fills in its holes. The endpoint's shape is shown read-only
+ * rather than hidden, because "what will this actually request" is the question someone
+ * binding a table is really asking.
+ */
+function IntegrationSource({
+  page,
+  query,
+  source,
+  integrations,
+}: {
+  page: Page;
+  query: QueryDef;
+  source: IntegrationQuerySource;
+  integrations: ApiIntegrationSummary[];
+}) {
+  const { edit, writable } = useStudio();
+  const connectionId = useId();
+  const endpointId = useId();
+
+  const integration = integrations.find((one) => one.id === source.integrationId);
+  const endpoint = integration?.endpoints.find((one) => one.id === source.endpointId);
+
+  const patchSource = (changes: Partial<IntegrationQuerySource>) => {
+    edit((current) => updateQuery(current, query.id, { source: { ...source, ...changes } }));
+  };
+
+  /**
+   * The holes the chosen endpoint declares, across its path, body and header values.
+   *
+   * Read from the endpoint rather than from what this query already stores, so that adding
+   * a hole to the endpoint in workspace settings surfaces a new field here — instead of
+   * silently resolving to empty at run time on every page that calls it.
+   */
+  const holes = endpoint
+    ? [
+        ...new Set(
+          [endpoint.path, endpoint.body ?? '', ...Object.values(endpoint.headers)].flatMap(
+            (template) =>
+              parseTemplate(template)
+                .filter((segment) => segment.kind === 'expr')
+                .map((segment) => segment.code.trim())
+                .filter((name) => name !== ''),
+          ),
+        ),
+      ]
+    : [];
+
+  return (
+    <>
+      <div className={styles.field}>
+        <label className={styles.fieldLabel} htmlFor={connectionId}>
+          Connection
+        </label>
+        <select
+          id={connectionId}
+          className={styles.select}
+          value={source.integrationId}
+          disabled={!writable}
+          onChange={(event) => {
+            const next = integrations.find((one) => one.id === event.target.value);
+            // Changing connection invalidates the endpoint and every variable with it:
+            // those named holes belonging to the old endpoint. Keeping them would leave a
+            // query pointing at an endpoint on a different connection.
+            patchSource({
+              integrationId: event.target.value,
+              endpointId: next?.endpoints[0]?.id ?? '',
+              variables: {},
+            });
+          }}
+        >
+          {integration === undefined && (
+            <option value={source.integrationId}>This connection is no longer available</option>
+          )}
+          {integrations.map((one) => (
+            <option key={one.id} value={one.id}>
+              {one.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className={styles.field}>
+        <label className={styles.fieldLabel} htmlFor={endpointId}>
+          Endpoint
+        </label>
+        <select
+          id={endpointId}
+          className={styles.select}
+          value={source.endpointId}
+          disabled={!writable || integration === undefined}
+          onChange={(event) => patchSource({ endpointId: event.target.value, variables: {} })}
+        >
+          {endpoint === undefined && (
+            <option value={source.endpointId}>
+              {integration ? 'Choose an endpoint' : 'Unavailable'}
+            </option>
+          )}
+          {integration?.endpoints.map((one) => (
+            <option key={one.id} value={one.id}>
+              {one.method} {one.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {integration && endpoint && (
+        // Selectable, against the panel's default: this is the one line that says what
+        // will actually be requested, and the thing to do with it is paste it into a
+        // terminal. Same for the hints below, which carry expressions to copy.
+        <p className={styles.requestPreview} data-selectable>
+          <span className={styles.requestMethod}>{endpoint.method}</span> {integration.baseUrl}
+          {endpoint.path}
+        </p>
+      )}
+
+      {holes.map((name) => (
+        <div key={name} className={styles.field}>
+          <span className={styles.fieldLabel}>{name}</span>
+          <TemplateField
+            value={source.variables?.[name] ?? ''}
+            suggestions={scopeSuggestions(page)}
+            disabled={!writable}
+            placeholder="{{ state.something }}"
+            onCommit={(value) =>
+              patchSource({ variables: { ...(source.variables ?? {}), [name]: value } })
+            }
+          />
+        </div>
+      ))}
+
+      {endpoint && endpoint.resultPath !== '' && (
+        <p className={styles.hint} data-selectable>
+          Rows are at <code>{endpoint.resultPath}</code>.
+        </p>
+      )}
+    </>
+  );
+}
+
+/**
+ * The request half of a query against a Power BI semantic model.
+ *
+ * Unlike the endpoint form above, this has a great deal to edit, and that difference is
+ * the feature rather than an inconsistency: a REST endpoint is a call somebody defined
+ * once for the team, and a DAX statement is the question this particular visual is asking.
+ * There is no useful level in between to have defined it at.
+ *
+ * What the connection still supplies is the base URL and the credential — which for Power
+ * BI means the client secret the server trades for a token. Everything about *which* data
+ * is here.
+ */
+function PowerBiSource({
+  page,
+  query,
+  source,
+  integrations,
+}: {
+  page: Page;
+  query: QueryDef;
+  source: PowerBiQuerySource;
+  integrations: ApiIntegrationSummary[];
+}) {
+  const { edit, writable } = useStudio();
+  const connectionId = useId();
+  const daxId = useId();
+
+  const integration = integrations.find((one) => one.id === source.integrationId);
+  const suggestions = scopeSuggestions(page);
+
+  const patchSource = (changes: Partial<PowerBiQuerySource>) => {
+    edit((current) => updateQuery(current, query.id, { source: { ...source, ...changes } }));
+  };
+
+  return (
+    <>
+      <div className={styles.field}>
+        <label className={styles.fieldLabel} htmlFor={connectionId}>
+          Connection
+        </label>
+        <select
+          id={connectionId}
+          className={styles.select}
+          value={source.integrationId}
+          disabled={!writable}
+          onChange={(event) => patchSource({ integrationId: event.target.value })}
+        >
+          {integration === undefined && (
+            <option value={source.integrationId}>This connection is no longer available</option>
+          )}
+          {integrations.map((one) => (
+            <option key={one.id} value={one.id}>
+              {one.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/*
+        Said rather than enforced. A connection with a pasted bearer token *will* work
+        against Power BI for as long as that token lives, which is a legitimate way to try
+        this out — so the picker above lists every connection and this explains what is
+        missing rather than hiding the option that produced it.
+      */}
+      {integration && integration.auth.type !== 'oauth2' && (
+        <p className={styles.warning}>
+          <AlertTriangle size={12} aria-hidden />
+          {integration.name} does not use OAuth2 client credentials, so its token will not be
+          refreshed when it expires.
+        </p>
+      )}
+
+      <div className={styles.field}>
+        <span className={styles.fieldLabel}>Workspace ID</span>
+        <TemplateField
+          value={source.groupId ?? ''}
+          suggestions={suggestions}
+          disabled={!writable}
+          placeholder="The Power BI workspace this dataset is in"
+          onCommit={(groupId) =>
+            patchSource({ groupId: groupId.trim() === '' ? undefined : groupId })
+          }
+        />
+      </div>
+
+      <div className={styles.field}>
+        <span className={styles.fieldLabel}>Dataset ID</span>
+        <TemplateField
+          value={source.datasetId}
+          suggestions={suggestions}
+          disabled={!writable}
+          placeholder="00000000-0000-0000-0000-000000000000"
+          onCommit={(datasetId) => patchSource({ datasetId })}
+        />
+      </div>
+
+      <div className={styles.field}>
+        <label className={styles.fieldLabel} htmlFor={daxId}>
+          DAX
+        </label>
+        <TemplateField
+          id={daxId}
+          value={source.dax}
+          suggestions={suggestions}
+          disabled={!writable}
+          multiline
+          placeholder={'EVALUATE\nSUMMARIZECOLUMNS(Date[Year], "Revenue", [Total Revenue])'}
+          onCommit={(dax) => patchSource({ dax })}
+        />
+      </div>
+
+      {integration && (
+        <p className={styles.requestPreview} data-selectable>
+          <span className={styles.requestMethod}>POST</span>{' '}
+          {powerbiExecuteUrl(integration.baseUrl, source.datasetId || '…', source.groupId ?? '')}
+        </p>
+      )}
+
+      <p className={styles.hint} data-selectable>
+        The result is the rows, with each column named as DAX named it minus the table qualifier —{' '}
+        <code>Sales[Region]</code> reads as <code>Region</code>. Bind a table or a chart to{' '}
+        <code>{`{{ queries.${query.name}.data }}`}</code>.
+      </p>
+
+      {/*
+        Worth one line, in the panel rather than only in a comment. A value interpolated
+        into DAX is a value interpolated into a query language, which is the same hazard a
+        URL query has and one people are readier to recognise when it is spelled out.
+      */}
+      <p className={styles.hint} data-selectable>
+        A <code>{'{{ }}'}</code> hole is substituted into the statement as text. Quote it yourself
+        where DAX wants a string.
+      </p>
+    </>
+  );
+}
+
+/** The request half of a query someone is writing out by hand. */
+function UrlSource({
+  page,
+  query,
+  source,
+}: {
+  page: Page;
+  query: QueryDef;
+  source: UrlQuerySource;
+}) {
   const urlId = useId();
   const bodyId = useId();
-  const runId = useId();
   const { edit, writable } = useStudio();
 
   const suggestions = scopeSuggestions(page);
+  const patchSource = (changes: Partial<UrlQuerySource>) => {
+    edit((current) => updateQuery(current, query.id, { source: { ...source, ...changes } }));
+  };
+
+  return (
+    <>
+      <div className={styles.field}>
+        <label className={styles.fieldLabel} htmlFor={urlId}>
+          URL
+        </label>
+        <TemplateField
+          id={urlId}
+          value={source.url}
+          suggestions={suggestions}
+          disabled={!writable}
+          placeholder="/api/users?q={{ state.search }}"
+          onCommit={(url) => patchSource({ url })}
+        />
+      </div>
+
+      {source.method === 'GET' ? null : (
+        <div className={styles.field}>
+          <label className={styles.fieldLabel} htmlFor={bodyId}>
+            Body
+          </label>
+          <TemplateField
+            id={bodyId}
+            value={source.body ?? ''}
+            suggestions={suggestions}
+            disabled={!writable}
+            multiline
+            placeholder={'{ "name": "{{ state.name }}" }'}
+            onCommit={(body) => patchSource({ body: body === '' ? undefined : body })}
+          />
+        </div>
+      )}
+
+      <HeadersEditor query={query} source={source} />
+    </>
+  );
+}
+
+function QueryCard({
+  page,
+  query,
+  cyclic,
+  integrations,
+}: {
+  page: Page;
+  query: QueryDef;
+  cyclic: boolean;
+  integrations: ApiIntegrationSummary[];
+}) {
+  const runId = useId();
+  const { edit, writable } = useStudio();
+
   const patch = (changes: Partial<Omit<QueryDef, 'id'>>) => {
     edit((current) => updateQuery(current, query.id, changes));
+  };
+
+  /**
+   * Switching kind replaces the source outright rather than merging.
+   *
+   * The arms share no fields beyond `integrationId`, so a merge would carry a `url` onto an
+   * integration source — the half-valid shape the document model was restructured to make
+   * unrepresentable. Losing the old request is the honest cost of changing your mind, and
+   * an undo brings it back.
+   *
+   * The one thing carried across is the connection, when the source being left had one:
+   * switching an endpoint query to a Power BI query against the same connection is a real
+   * gesture, and re-picking a name that is already on screen is not a decision.
+   */
+  const switchKind = (kind: QueryDef['source']['kind']) => {
+    if (kind === query.source.kind) return;
+
+    const chosen =
+      query.source.kind === 'url' ? undefined : query.source.integrationId || undefined;
+    const integrationId = chosen ?? integrations[0]?.id ?? '';
+
+    patch({
+      source:
+        kind === 'url'
+          ? { kind: 'url', method: 'GET', url: '' }
+          : kind === 'powerbi'
+            ? { kind: 'powerbi', integrationId, datasetId: '', dax: '' }
+            : {
+                kind: 'integration',
+                integrationId,
+                endpointId:
+                  integrations.find((one) => one.id === integrationId)?.endpoints[0]?.id ?? '',
+              },
+    });
   };
 
   return (
@@ -372,17 +858,38 @@ function QueryCard({ page, query, cyclic }: { page: Page; query: QueryDef; cycli
 
         <select
           className={styles.type}
-          value={query.method}
+          value={query.source.kind}
           disabled={!writable}
-          aria-label={`${query.name} method`}
-          onChange={(event) => patch({ method: event.target.value as QueryDef['method'] })}
+          aria-label={`${query.name} request kind`}
+          onChange={(event) => switchKind(event.target.value as QueryDef['source']['kind'])}
         >
-          {HTTP_METHODS.map((method) => (
-            <option key={method} value={method}>
-              {method}
-            </option>
-          ))}
+          <option value="integration">Endpoint</option>
+          <option value="powerbi">Power BI</option>
+          <option value="url">URL</option>
         </select>
+
+        {query.source.kind === 'url' && (
+          <select
+            className={styles.type}
+            value={query.source.method}
+            disabled={!writable}
+            aria-label={`${query.name} method`}
+            onChange={(event) =>
+              patch({
+                source: {
+                  ...(query.source as UrlQuerySource),
+                  method: event.target.value as UrlQuerySource['method'],
+                },
+              })
+            }
+          >
+            {HTTP_METHODS.map((method) => (
+              <option key={method} value={method}>
+                {method}
+              </option>
+            ))}
+          </select>
+        )}
 
         <button
           type="button"
@@ -397,38 +904,29 @@ function QueryCard({ page, query, cyclic }: { page: Page; query: QueryDef; cycli
       </div>
 
       <div className={styles.cardBody}>
-        <div className={styles.field}>
-          <label className={styles.fieldLabel} htmlFor={urlId}>
-            URL
-          </label>
-          <TemplateField
-            id={urlId}
-            value={query.url}
-            suggestions={suggestions}
-            disabled={!writable}
-            placeholder="/api/users?q={{ state.search }}"
-            onCommit={(url) => patch({ url })}
+        {query.source.kind === 'url' ? (
+          <UrlSource page={page} query={query} source={query.source} />
+        ) : integrations.length === 0 ? (
+          <p className={styles.warning}>
+            <AlertTriangle size={12} aria-hidden />
+            This workspace has no API connections yet. Add one from the workspace screen, or switch
+            this query to a plain URL.
+          </p>
+        ) : query.source.kind === 'powerbi' ? (
+          <PowerBiSource
+            page={page}
+            query={query}
+            source={query.source}
+            integrations={integrations}
           />
-        </div>
-
-        {query.method === 'GET' ? null : (
-          <div className={styles.field}>
-            <label className={styles.fieldLabel} htmlFor={bodyId}>
-              Body
-            </label>
-            <TemplateField
-              id={bodyId}
-              value={query.body ?? ''}
-              suggestions={suggestions}
-              disabled={!writable}
-              multiline
-              placeholder={'{ "name": "{{ state.name }}" }'}
-              onCommit={(body) => patch({ body: body === '' ? undefined : body })}
-            />
-          </div>
+        ) : (
+          <IntegrationSource
+            page={page}
+            query={query}
+            source={query.source}
+            integrations={integrations}
+          />
         )}
-
-        <HeadersEditor query={query} />
 
         <label className={styles.toggle} htmlFor={runId}>
           <input
@@ -455,33 +953,51 @@ function QueryCard({ page, query, cyclic }: { page: Page; query: QueryDef; cycli
 }
 
 function QueryList({ page }: { page: Page }) {
-  const { edit, writable } = useStudio();
+  const { edit, workspaceId } = useStudio();
+
+  /**
+   * The workspace's connections, so a query can name one.
+   *
+   * Read here rather than per card: every card offers the same list, and one fetch behind
+   * a shared cache is what keeps opening this panel from firing a request per query.
+   */
+  const integrations = useIntegrations(workspaceId).data ?? [];
 
   // The same check the runtime makes before auto-running one, so the panel and the
   // canvas cannot disagree about which query is refusing to run.
   const cyclic = useMemo(() => cyclicQueries(page.queries), [page.queries]);
 
   return (
-    <section className={styles.group}>
-      <header className={styles.groupHead}>
-        <h3 className={styles.groupTitle}>Queries</h3>
-        <button
-          type="button"
-          className={styles.add}
-          disabled={!writable}
-          onClick={() =>
-            edit((current) =>
-              addQuery(current, createQuery(current, { name: 'query', runOnLoad: true })),
-            )
-          }
-        >
-          <Plus size={12} aria-hidden />
-          Query
-        </button>
-      </header>
-
+    <Group
+      title="Queries"
+      count={page.queries.length}
+      addLabel="Query"
+      onAdd={() =>
+        edit((current) =>
+          addQuery(
+            current,
+            createQuery(current, {
+              name: 'query',
+              runOnLoad: true,
+              // A workspace with connections gets one pre-selected, because binding to
+              // a saved endpoint is the path this feature exists for; one without
+              // falls back to the URL form rather than offering an empty picker.
+              ...(integrations[0]
+                ? {
+                    source: {
+                      kind: 'integration' as const,
+                      integrationId: integrations[0].id,
+                      endpointId: integrations[0].endpoints[0]?.id ?? '',
+                    },
+                  }
+                : {}),
+            }),
+          ),
+        )
+      }
+    >
       {page.queries.length === 0 ? (
-        <p className={styles.empty}>
+        <p className={styles.empty} data-selectable>
           No queries yet. A query is an HTTP request the page can read with{' '}
           <code>{'{{ queries.name.data }}'}</code>, and its URL, body and headers can each
           interpolate state.
@@ -489,11 +1005,17 @@ function QueryList({ page }: { page: Page }) {
       ) : (
         <ul className={styles.cards}>
           {page.queries.map((query) => (
-            <QueryCard key={query.id} page={page} query={query} cyclic={cyclic.has(query.id)} />
+            <QueryCard
+              key={query.id}
+              page={page}
+              query={query}
+              cyclic={cyclic.has(query.id)}
+              integrations={integrations}
+            />
           ))}
         </ul>
       )}
-    </section>
+    </Group>
   );
 }
 

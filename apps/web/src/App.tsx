@@ -1,14 +1,38 @@
+import { Suspense, lazy } from 'react';
 import { Route, Routes, useNavigate } from 'react-router';
-import { PreviewRoute } from './preview/PreviewRoute.js';
 import { SharedPageRoute } from './preview/SharedPageRoute.js';
-import { EditorRoute } from './routes/EditorRoute.js';
 import { RequireAuth } from './routes/RequireAuth.js';
 import { SignInRoute } from './routes/SignInRoute.js';
 import { SignUpRoute } from './routes/SignUpRoute.js';
 import { Button } from './ui/Button.js';
-import { ScreenMessage } from './ui/Screen.js';
-import { WorkspaceIndexRoute } from './workspace/WorkspaceIndexRoute.js';
-import { WorkspaceRoute } from './workspace/WorkspaceRoute.js';
+import { ScreenLoading, ScreenMessage } from './ui/Screen.js';
+
+/**
+ * The studio, split off from the routes that do not need it.
+ *
+ * The editor is most of this bundle — the canvas, the drag-and-drop, the inspector, the
+ * component library, and through the code dialog the generator as well. Three of the
+ * routes below have no use for any of it, and one of those three is the one strangers
+ * reach: a `/s/:slug` visitor was downloading the whole builder to look at one static
+ * page, because a single chunk is a single chunk no matter which route asked for it.
+ *
+ * Sign-in, sign-up and the shared page stay eager. They are the three entry points where a
+ * second round trip before first paint would be the most visible, and between them they
+ * pull almost nothing — the shared page renders through `@ui-builder/runtime`, which is
+ * what draws a document, not what edits one.
+ */
+const EditorRoute = lazy(async () => ({
+  default: (await import('./routes/EditorRoute.js')).EditorRoute,
+}));
+const PreviewRoute = lazy(async () => ({
+  default: (await import('./preview/PreviewRoute.js')).PreviewRoute,
+}));
+const WorkspaceIndexRoute = lazy(async () => ({
+  default: (await import('./workspace/WorkspaceIndexRoute.js')).WorkspaceIndexRoute,
+}));
+const WorkspaceRoute = lazy(async () => ({
+  default: (await import('./workspace/WorkspaceRoute.js')).WorkspaceRoute,
+}));
 
 function NotFoundRoute() {
   const navigate = useNavigate();
@@ -39,7 +63,16 @@ export function App() {
           asked a visitor to sign in would not be a shared link (Phase 9). */}
       <Route path="/s/:slug" element={<SharedPageRoute />} />
 
-      <Route element={<RequireAuth />}>
+      {/* One boundary around the whole authenticated group rather than one per route: the
+          chunk is shared between them, so after the first of these screens no other one
+          suspends, and a fallback per route would only be four places to keep identical. */}
+      <Route
+        element={
+          <Suspense fallback={<ScreenLoading label="Loading the studio" />}>
+            <RequireAuth />
+          </Suspense>
+        }
+      >
         <Route path="/" element={<WorkspaceIndexRoute />} />
         <Route path="/w/:workspaceSlug" element={<WorkspaceRoute />} />
         <Route path="/p/:projectId" element={<EditorRoute />} />

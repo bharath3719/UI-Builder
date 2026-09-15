@@ -27,6 +27,7 @@ export { Heading, type HeadingProps } from './Heading.js';
 export { Image, type ImageProps } from './Image.js';
 export { Input, type InputProps } from './Input.js';
 export { Link, type LinkProps } from './Link.js';
+export { MultiSelect, type MultiSelectProps } from './MultiSelect.js';
 export { PromptInput, type PromptInputProps } from './PromptInput.js';
 export { Radio, type RadioProps } from './Radio.js';
 export { RichText, type RichTextProps } from './RichText.js';

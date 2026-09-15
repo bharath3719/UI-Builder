@@ -14,6 +14,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
+import { splitPalette } from '@ui-builder/components';
 import styles from './controls.module.css';
 
 /* -------------------------------------------------------------------------- */
@@ -74,7 +75,7 @@ export function Row({ label, overridden, onReset, wide, children, htmlFor, bind 
                 : `Bind ${label.toLowerCase()} to an expression`
             }
           >
-            {'{ }'}
+            {'{}'}
           </button>
         ) : null}
 
@@ -440,16 +441,155 @@ function tokenValue(name: string): string {
   return `var(--${name})`;
 }
 
+/**
+ * A stored colour as the inspector can actually paint it.
+ *
+ * `var(--primary)` names a token of the **design's** theme, and the inspector is not in
+ * the design — it is studio chrome, whose own stylesheet has no such property, so a
+ * swatch handed that value straight paints nothing at all and reports a colour as
+ * missing when it is only defined elsewhere. The tokens list beside it is that same
+ * theme's, so it is what resolves it.
+ *
+ * Display only: what a field commits is still the `var()`, which is the whole point of
+ * picking a token rather than the colour behind it.
+ */
+function paintable(value: string, tokens: readonly (readonly [string, string])[]): string {
+  const named = /^var\(\s*--([\w-]+)\s*(?:,([\s\S]*))?\)$/.exec(value.trim());
+  if (!named) return value;
+
+  const token = tokens.find(([name]) => name === named[1]);
+  if (token) return token[1];
+
+  // `var(--brand, #eee)` — the fallback is what the browser would paint, so it is what
+  // the swatch should show for a token this theme does not define.
+  return named[2]?.trim() || value;
+}
+
+/**
+ * A list of colours, edited as a row of wells — the control behind a `palette` prop.
+ *
+ * The whole of the difference from `ColorControl` is that the value is a *list*, and the
+ * list has a meaning the control has to show: a named list replaces the **front** of the
+ * component's own and leaves the rest of it alone, so naming one colour recolours one
+ * series rather than flattening the chart. A row that stopped at the named colours would
+ * hide the ones the component is actually drawing with, and the author would be choosing
+ * the second colour without being able to see the first.
+ *
+ * So the row is always the full cycle. Named slots are solid and open a picker; the rest
+ * are ghosted previews of `swatches`, which is the component's own list arriving through
+ * its spec (D7) rather than this file knowing anything about charts.
+ *
+ * That leaves the two gestures as exact inverses, which is the whole of the interaction:
+ * clicking a ghost **extends** the named list to there, and clearing a well **shortens**
+ * it to before there. Neither can leave a hole, because a hole is not something the
+ * comma-separated value could hold.
+ */
+export function PaletteControl({
+  value,
+  swatches,
+  tokens,
+  onCommit,
+  id,
+  label,
+}: {
+  value: string;
+  /** The component's own colours, in order, for the slots nobody has named. */
+  swatches: readonly string[];
+  /** Theme colour tokens, as `[name, cssValue]`. */
+  tokens: readonly (readonly [string, string])[];
+  onCommit: (value: string) => void;
+  id?: string;
+  /** The prop's label, so each well can say which of several it is. */
+  label: string;
+}) {
+  const pickerId = useId();
+  const named = splitPalette(value);
+  const cycle = Math.max(named.length, swatches.length, 1);
+
+  /** The colour a slot is drawing with, whether or not it was named. */
+  const colourAt = (index: number) =>
+    named[index] ?? (swatches.length === 0 ? '' : (swatches[index % swatches.length] ?? ''));
+
+  /** The list written out as `length` explicit colours, filling from the defaults. */
+  const explicit = (length: number) => Array.from({ length }, (_, index) => colourAt(index));
+
+  // Joined with a comma and a space, which is how the value reads back in the expression
+  // field when somebody binds the prop later. `splitPalette` trims either way.
+  const commit = (colours: readonly string[]) => onCommit(colours.join(', '));
+
+  return (
+    <div className={styles.paletteRow} id={id} role="group" aria-label={label}>
+      {Array.from({ length: cycle }, (_, index) =>
+        index < named.length ? (
+          <Swatch
+            key={index}
+            value={colourAt(index)}
+            tokens={tokens}
+            pickerId={`${pickerId}-${index}`}
+            label={`Colour ${index + 1}`}
+            clearLabel="Theme from here"
+            onCommit={(next) => {
+              if (next === '') {
+                commit(explicit(index));
+                return;
+              }
+              const replaced = named.slice();
+              replaced[index] = next;
+              commit(replaced);
+            }}
+          />
+        ) : (
+          <button
+            key={index}
+            type="button"
+            className={styles.well}
+            title={`${colourAt(index)} — the component's own colour. Click to set it.`}
+            aria-label={`Set colour ${index + 1}, currently the component's own`}
+            onClick={() => commit(explicit(index + 1))}
+          >
+            <span
+              className={styles.wellFill}
+              style={{ background: paintable(colourAt(index), tokens) }}
+            />
+          </button>
+        ),
+      )}
+
+      {/* Past the end of the cycle, for a chart drawing more series than the stylesheet
+          has slots for — the component lengthens the cycle to whatever is named here. */}
+      <button
+        type="button"
+        className={styles.wellAdd}
+        title="Add a colour"
+        aria-label="Add a colour"
+        onClick={() => commit(explicit(named.length + 1))}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
 function Swatch({
   value,
   tokens,
   onCommit,
   pickerId,
+  label = 'Choose a colour',
+  clearLabel = 'Clear',
 }: {
   value: string;
   tokens: readonly (readonly [string, string])[];
   onCommit: (value: string) => void;
   pickerId: string;
+  /** What this well is for, when it is one of several. */
+  label?: string;
+  /**
+   * What committing nothing does here. A lone colour is cleared; a slot in a palette is
+   * handed back to the component's own list, which is a different sentence for the same
+   * empty string.
+   */
+  clearLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -477,13 +617,13 @@ function Swatch({
       <button
         type="button"
         className={styles.swatch}
-        aria-label="Choose a colour"
+        aria-label={label}
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
         {/* The checker sits behind the fill so a transparent or unset value reads as
             transparent rather than as white. */}
-        <span className={styles.swatchFill} style={{ background: value }} />
+        <span className={styles.swatchFill} style={{ background: paintable(value, tokens) }} />
       </button>
 
       {open ? (
@@ -528,7 +668,7 @@ function Swatch({
                 setOpen(false);
               }}
             >
-              Clear
+              {clearLabel}
             </button>
           </div>
         </div>

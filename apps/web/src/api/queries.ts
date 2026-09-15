@@ -6,14 +6,24 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import type {
+  AddMemberRequest,
+  AssetSummary,
+  CreateApiEndpointInput,
+  CreateApiIntegrationInput,
   CreateProjectRequest,
   CreateWorkspaceRequest,
   ProjectSummary,
+  Role,
+  TestApiEndpointInput,
+  UpdateApiEndpointRequest,
+  UpdateApiIntegrationRequest,
   UpdateProjectRequest,
   UpdateWorkspaceRequest,
   WorkspaceSummary,
 } from '@ui-builder/schema';
+import * as assetsApi from './assets.js';
 import { ApiError } from './client.js';
+import * as integrationsApi from './integrations.js';
 import * as projectsApi from './projects.js';
 import * as workspacesApi from './workspaces.js';
 
@@ -26,6 +36,16 @@ export const keys = {
   workspaces: ['workspaces'] as const,
   workspace: (id: string) => ['workspaces', id] as const,
   members: (id: string) => ['workspaces', id, 'members'] as const,
+  /**
+   * One key for the whole set, endpoints included.
+   *
+   * They are embedded in the response (see the contract), so there is nothing finer to
+   * invalidate: adding an endpoint changes the integration it belongs to. Keeping it
+   * coarse is also what lets the studio's endpoint picker read one cache entry rather
+   * than joining two.
+   */
+  integrations: (workspaceId: string) => ['workspaces', workspaceId, 'integrations'] as const,
+  assets: (projectId: string) => ['projects', projectId, 'assets'] as const,
   projects: (workspaceId: string, includeArchived: boolean) =>
     ['workspaces', workspaceId, 'projects', { includeArchived }] as const,
   project: (id: string) => ['projects', id] as const,
@@ -114,6 +134,221 @@ export function useUpdateWorkspace(id: string) {
       void client.invalidateQueries({ queryKey: keys.workspaces });
     },
   });
+}
+
+/* ==========================================================================
+   Assets
+   ========================================================================== */
+
+export function useAssets(projectId: string | undefined) {
+  return useQuery({
+    queryKey: keys.assets(projectId ?? ''),
+    queryFn: projectId
+      ? ({ signal }: { signal: AbortSignal }) => assetsApi.listAssets(projectId, signal)
+      : skipToken,
+  });
+}
+
+export function useUploadAsset(projectId: string) {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: (file: File) => assetsApi.uploadAsset(projectId, file),
+    onSuccess: (asset: AssetSummary) => {
+      // Prepended rather than invalidated: the list is ordered newest-first and the server
+      // just told us the new row, so a refetch would be a round trip to learn what is
+      // already in hand — and a picker that flickers between the two orderings.
+      client.setQueryData<AssetSummary[]>(keys.assets(projectId), (current) =>
+        current ? [asset, ...current] : [asset],
+      );
+    },
+  });
+}
+
+export function useDeleteAsset(projectId: string) {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: (assetId: string) => assetsApi.deleteAsset(projectId, assetId),
+    onSuccess: (_result, assetId) => {
+      client.setQueryData<AssetSummary[]>(keys.assets(projectId), (current) =>
+        current?.filter((asset) => asset.id !== assetId),
+      );
+    },
+  });
+}
+
+/* ==========================================================================
+   Members
+   ========================================================================== */
+
+export function useMembers(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: keys.members(workspaceId ?? ''),
+    queryFn: workspaceId
+      ? ({ signal }: { signal: AbortSignal }) => workspacesApi.listMembers(workspaceId, signal)
+      : skipToken,
+  });
+}
+
+/**
+ * The three writes share one `onSuccess`, because they all change the same two things:
+ * the member list, and the `role` the workspace summary carries for the caller.
+ *
+ * That second one is not incidental. A workspace's own `role` is what every screen reads
+ * to decide what to offer — the studio decides whether it is read-only before it renders
+ * (Phase 8) — so demoting yourself and leaving the project grid still showing "New
+ * project" would be a button that 403s. Invalidating both is what keeps the chrome honest.
+ */
+function useMemberMutation<TArgs, TResult>(
+  workspaceId: string,
+  run: (args: TArgs) => Promise<TResult>,
+) {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: run,
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.members(workspaceId) });
+      void client.invalidateQueries({ queryKey: keys.workspaces });
+    },
+  });
+}
+
+export function useAddMember(workspaceId: string) {
+  return useMemberMutation(workspaceId, (input: AddMemberRequest) =>
+    workspacesApi.addMember(workspaceId, input),
+  );
+}
+
+export function useUpdateMemberRole(workspaceId: string) {
+  return useMemberMutation(workspaceId, ({ memberId, role }: { memberId: string; role: Role }) =>
+    workspacesApi.updateMemberRole(workspaceId, memberId, { role }),
+  );
+}
+
+/**
+ * Also how a member leaves: pass their own membership id.
+ *
+ * `onRemoved` is taken here rather than passed to `mutate`, and that is load-bearing.
+ * Leaving a workspace removes it from the caller's list, which makes the screen holding
+ * this dialog decide it is looking at a workspace that no longer exists — so the component
+ * that called `mutate` is gone by the time the request settles, and TanStack skips the
+ * per-call callbacks of an unmounted observer. A mutation-level callback still runs, which
+ * is what gets the leaver somewhere that exists rather than onto "workspace not found".
+ */
+export function useRemoveMember(workspaceId: string, onRemoved?: (memberId: string) => void) {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: (memberId: string) => workspacesApi.removeMember(workspaceId, memberId),
+    onSuccess: async (_result, memberId) => {
+      if (onRemoved) {
+        // Leaving: the member list has stopped being readable, so refetching it would only
+        // produce a 403 to show in the panel that is on its way out. Drop it instead.
+        client.removeQueries({ queryKey: keys.members(workspaceId) });
+      } else {
+        void client.invalidateQueries({ queryKey: keys.members(workspaceId) });
+      }
+
+      // Awaited, and *before* the callback, which is the whole of why this is not two
+      // `void` calls: `/` redirects into the caller's first workspace, so a leaver sent
+      // there while the list still holds the workspace they just left is sent straight
+      // back into it — and lands on "workspace not found" a moment later.
+      await client.invalidateQueries({ queryKey: keys.workspaces });
+      onRemoved?.(memberId);
+    },
+  });
+}
+
+/* ==========================================================================
+   API integrations
+   ========================================================================== */
+
+export function useIntegrations(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: keys.integrations(workspaceId ?? ''),
+    queryFn: workspaceId
+      ? ({ signal }: { signal: AbortSignal }) =>
+          integrationsApi.listIntegrations(workspaceId, signal)
+      : skipToken,
+  });
+}
+
+/**
+ * Every write here invalidates the same one key.
+ *
+ * Endpoints are embedded in their integration, so there is no finer thing to drop — and a
+ * connection's `hasSecret`, its endpoint list and an endpoint's captured sample all move
+ * as a unit from the studio's point of view. One key means no screen can be looking at a
+ * connection whose endpoints came from a different fetch.
+ */
+function useIntegrationMutation<TArgs, TResult>(
+  workspaceId: string,
+  run: (args: TArgs) => Promise<TResult>,
+) {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: run,
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.integrations(workspaceId) }),
+  });
+}
+
+export function useCreateIntegration(workspaceId: string) {
+  return useIntegrationMutation(workspaceId, (input: CreateApiIntegrationInput) =>
+    integrationsApi.createIntegration(workspaceId, input),
+  );
+}
+
+export function useUpdateIntegration(workspaceId: string) {
+  return useIntegrationMutation(
+    workspaceId,
+    ({ id, input }: { id: string; input: UpdateApiIntegrationRequest }) =>
+      integrationsApi.updateIntegration(workspaceId, id, input),
+  );
+}
+
+export function useDeleteIntegration(workspaceId: string) {
+  return useIntegrationMutation(workspaceId, (id: string) =>
+    integrationsApi.deleteIntegration(workspaceId, id),
+  );
+}
+
+export function useCreateEndpoint(workspaceId: string) {
+  return useIntegrationMutation(
+    workspaceId,
+    ({ integrationId, input }: { integrationId: string; input: CreateApiEndpointInput }) =>
+      integrationsApi.createEndpoint(workspaceId, integrationId, input),
+  );
+}
+
+export function useUpdateEndpoint(workspaceId: string) {
+  return useIntegrationMutation(
+    workspaceId,
+    (args: { integrationId: string; endpointId: string; input: UpdateApiEndpointRequest }) =>
+      integrationsApi.updateEndpoint(workspaceId, args.integrationId, args.endpointId, args.input),
+  );
+}
+
+export function useDeleteEndpoint(workspaceId: string) {
+  return useIntegrationMutation(
+    workspaceId,
+    (args: { integrationId: string; endpointId: string }) =>
+      integrationsApi.deleteEndpoint(workspaceId, args.integrationId, args.endpointId),
+  );
+}
+
+/**
+ * A test run writes `sampleResponse`, so it invalidates like any other mutation — the
+ * field picker has to see the sample the run just captured.
+ */
+export function useTestEndpoint(workspaceId: string) {
+  return useIntegrationMutation(
+    workspaceId,
+    (args: { integrationId: string; endpointId: string; input: TestApiEndpointInput }) =>
+      integrationsApi.testEndpoint(workspaceId, args.integrationId, args.endpointId, args.input),
+  );
 }
 
 /* ==========================================================================

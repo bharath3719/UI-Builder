@@ -2,10 +2,12 @@
 
 exports[`the interactive project > is this page 1`] = `
 "import { useState, type ChangeEvent } from 'react';
-import { list, pick, text, truthy } from '../lib/values';
+import { cell, list, options, pick, text, truthy } from '../lib/values';
 import { useQuery } from '../lib/query';
 import { useGoTo } from '../lib/navigate';
 import { Toasts, useToasts } from '../lib/toast';
+import { Overlay } from '../components/Overlay';
+import { SortableRows } from '../components/SortableRows';
 
 import styles from './Home.module.css';
 
@@ -27,6 +29,8 @@ export function Home() {
     }),
   };
 
+  const [overlays, setOverlays] = useState({ confirmDelete: false });
+
   const { toasts, showToast } = useToasts();
 
   const goTo = useGoTo();
@@ -40,6 +44,15 @@ export function Home() {
     setState((current) => ({ ...current, busy: !truthy(current.busy) }));
     await queries.save.run();
     showToast(\`Counted to \${text(state.count + 1)}\`);
+  };
+
+  const onDeleteClick = () => {
+    setOverlays((current) => ({ ...current, confirmDelete: true }));
+  };
+
+  const onConfirmClick = async () => {
+    await queries.save.run();
+    setOverlays((current) => ({ ...current, confirmDelete: false }));
   };
 
   return (
@@ -69,6 +82,47 @@ export function Home() {
         >
           Count up
         </button>
+        <button
+          className="ub-button"
+          type="button"
+          data-variant="destructive"
+          data-size="default"
+          onClick={onDeleteClick}
+        >
+          Delete everything
+        </button>
+        <Overlay
+          className="ub-modal"
+          data-size="md"
+          data-dim=""
+          data-dismissable=""
+          open={overlays.confirmDelete}
+          onClose={() => setOverlays((current) => ({ ...current, confirmDelete: false }))}
+        >
+          <div className="ub-modal-backdrop" aria-hidden="true" data-close="" />
+          <div className="ub-modal-panel" role="dialog" aria-modal="true">
+            <div className="ub-modal-header">
+              <div className="ub-modal-heading">
+                <h2 className="ub-modal-title">Delete everything?</h2>
+                <p className="ub-modal-description">This cannot be undone.</p>
+              </div>
+              <button className="ub-modal-close" type="button" aria-label="Close" data-close="">
+                ×
+              </button>
+            </div>
+            <div className="ub-modal-body">
+              <button
+                className="ub-button"
+                type="button"
+                data-variant="destructive"
+                data-size="default"
+                onClick={onConfirmClick}
+              >
+                Yes, delete
+              </button>
+            </div>
+          </div>
+        </Overlay>
         {truthy(!queries.people.data) && (
           <p className="ub-text" data-size="base" data-tone="muted">No people yet.</p>
         )}
@@ -94,6 +148,42 @@ export function Home() {
             </div>
           );
         })}
+        <table className="ub-table">
+          <thead className="ub-table-head">
+            <tr className="ub-table-row">
+              <th className="ub-table-grip-cell" scope="col" />
+              <th className="ub-table-header" scope="col">Name</th>
+              <th className="ub-table-header" scope="col">Role</th>
+            </tr>
+          </thead>
+          <SortableRows>
+            {list(queries.people.data).length === 0 && (
+              <tr className="ub-table-row">
+                <td className="ub-table-empty" colSpan={3}>Nobody matched that search.</td>
+              </tr>
+            )}
+            {list(queries.people.data).map((row, index) => (
+              <tr key={index} className="ub-table-row">
+                <td className="ub-table-grip-cell">
+                  <button
+                    type="button"
+                    className="ub-table-grip"
+                    data-grip=""
+                    aria-label="Reorder row"
+                  />
+                </td>
+                <td className="ub-table-cell">{cell(row, 'name')}</td>
+                <td className="ub-table-cell">{cell(row, 'role')}</td>
+              </tr>
+            ))}
+          </SortableRows>
+        </table>
+        <select className="ub-select" defaultValue="" data-placeholder="">
+          <option value="" disabled hidden>Assign to</option>
+          {options(queries.people.data, 'name', 'role').map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
       </div>
       <Toasts toasts={toasts} />
     </>

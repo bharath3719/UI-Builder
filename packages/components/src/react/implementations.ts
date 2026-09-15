@@ -15,53 +15,76 @@
  */
 
 import {
+  AppWindow,
   Badge as BadgeIcon,
   Calendar,
+  ChartColumn,
+  ChevronRight,
+  ChevronsDownUp,
   ChevronsUpDown,
   CircleDot,
   CircleUser,
+  Code,
   Columns3,
   Component,
   Ellipsis,
+  Gauge,
+  Globe,
   Grid3x3,
   Heading as HeadingIcon,
   IdCard,
   Image as ImageIcon,
+  Info,
   LetterText,
   Link as LinkIcon,
+  ListChecks,
+  MessageCircle,
   MessageSquareText,
   MessagesSquare,
   Minus,
   MousePointerClick,
+  MoveVertical,
   NotepadText,
   PanelBottom,
   PanelLeft,
+  PanelRight,
   PanelTop,
+  PanelsTopLeft,
+  Quote,
   Rows3,
   SendHorizontal,
   SlidersHorizontal,
   Space,
   Square,
   SquareCheck,
+  SquareDashed,
   Table as TableIcon,
   TextCursorInput,
   ToggleRight,
   Type,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 
 import { SPECS } from '../registry.js';
+import { Accordion } from './Accordion.js';
+import { Alert } from './Alert.js';
 import { Avatar } from './Avatar.js';
 import { Badge } from './Badge.js';
 import { Box } from './Box.js';
+import { Breadcrumb } from './Breadcrumb.js';
 import { Button } from './Button.js';
 import { Card } from './Card.js';
+import { Chart } from './Chart.js';
 import { ChatMessage } from './ChatMessage.js';
 import { ChatThread } from './ChatThread.js';
 import { Checkbox } from './Checkbox.js';
+import { Citation } from './Citation.js';
+import { CodeBlock } from './CodeBlock.js';
 import { DatePicker } from './DatePicker.js';
 import { Divider } from './Divider.js';
+import { Drawer } from './Drawer.js';
 import { Footer } from './Footer.js';
 import { Grid } from './Grid.js';
 import { Header } from './Header.js';
@@ -69,18 +92,27 @@ import { Heading } from './Heading.js';
 import { Image } from './Image.js';
 import { Input } from './Input.js';
 import { Link } from './Link.js';
+import { Modal } from './Modal.js';
+import { MultiSelect } from './MultiSelect.js';
+import { Progress } from './Progress.js';
 import { PromptInput } from './PromptInput.js';
 import { Radio } from './Radio.js';
 import { RichText } from './RichText.js';
+import { Scroll } from './Scroll.js';
 import { Select } from './Select.js';
 import { SideNav } from './SideNav.js';
 import { Slider } from './Slider.js';
+import { Slot } from './Slot.js';
+import { SourceCard } from './SourceCard.js';
 import { Spacer } from './Spacer.js';
 import { HStack, VStack } from './Stack.js';
 import { Switch } from './Switch.js';
 import { Table } from './Table.js';
+import { Tabs } from './Tabs.js';
 import { Text } from './Text.js';
 import { Textarea } from './Textarea.js';
+import { ToolCall } from './ToolCall.js';
+import { Tooltip } from './Tooltip.js';
 import { TypingIndicator } from './TypingIndicator.js';
 
 /**
@@ -95,9 +127,14 @@ export const COMPONENTS: Record<string, ComponentType<any>> = {
   Grid,
   Spacer,
   Divider,
+  Scroll,
+  // Reached only while a component is being authored — every other render puts the slot's
+  // contents in place of an element. See `Slot.tsx`.
+  Slot,
   Header,
   Footer,
   SideNav,
+  Breadcrumb,
 
   Heading,
   Text,
@@ -106,10 +143,12 @@ export const COMPONENTS: Record<string, ComponentType<any>> = {
   Link,
   Badge,
   Avatar,
+  Alert,
 
   Input,
   Textarea,
   Select,
+  MultiSelect,
   Radio,
   Checkbox,
   Switch,
@@ -118,6 +157,8 @@ export const COMPONENTS: Record<string, ComponentType<any>> = {
 
   Card,
   Table,
+  Chart,
+  Progress,
 
   Image,
 
@@ -125,6 +166,16 @@ export const COMPONENTS: Record<string, ComponentType<any>> = {
   ChatMessage,
   PromptInput,
   TypingIndicator,
+  CodeBlock,
+  ToolCall,
+  Citation,
+  SourceCard,
+
+  Modal,
+  Drawer,
+  Tabs,
+  Accordion,
+  Tooltip,
 };
 
 /**
@@ -140,38 +191,54 @@ export const COMPONENTS: Record<string, ComponentType<any>> = {
  * the lookup. The same reason `spec.icon` used to be read straight off the spec.
  */
 export const ICONS: Record<string, LucideIcon> = {
+  AppWindow,
   Badge: BadgeIcon,
   Calendar,
+  ChartColumn,
+  ChevronRight,
+  ChevronsDownUp,
   ChevronsUpDown,
   CircleDot,
   CircleUser,
+  Code,
   Columns3,
   Component,
   Ellipsis,
+  Gauge,
+  Globe,
   Grid3x3,
   Heading: HeadingIcon,
   IdCard,
   Image: ImageIcon,
+  Info,
   LetterText,
   Link: LinkIcon,
+  ListChecks,
+  MessageCircle,
   MessageSquareText,
   MessagesSquare,
   Minus,
   MousePointerClick,
+  MoveVertical,
   NotepadText,
   PanelBottom,
   PanelLeft,
+  PanelRight,
   PanelTop,
+  PanelsTopLeft,
+  Quote,
   Rows3,
   SendHorizontal,
   SlidersHorizontal,
   Space,
   Square,
   SquareCheck,
+  SquareDashed,
   Table: TableIcon,
   TextCursorInput,
   ToggleRight,
   Type,
+  Wrench,
 };
 
 /**

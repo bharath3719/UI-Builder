@@ -48,6 +48,16 @@ export type JsxNode =
   | { kind: 'fragment'; children: JsxNode[] }
   | { kind: 'when'; test: string; child: JsxNode }
   /**
+   * `{children ?? (…)}` — a slot with something behind it (PLAN.md §12).
+   *
+   * Distinct from `when` because the operator is genuinely different and the difference
+   * matters: `&&` renders nothing when the left side is absent, which is the wrong answer
+   * for a component placed with no content — it would collapse to nothing and read as
+   * broken, when what the author built is sitting right there. `??` rather than `||` so a
+   * placement that deliberately passes an empty string or a zero keeps it.
+   */
+  | { kind: 'fallback'; code: string; child: JsxNode }
+  /**
    * `statements` are the handlers of nodes inside this repeat, which cannot be hoisted
    * past it: they close over the `item` this copy was rendered for, and that is exactly
    * how "remove this row" knows which row. An empty list keeps the concise arrow form.
@@ -117,9 +127,22 @@ function attrText(attr: JsxAttr): string {
   if (attr.kind === 'expr') return `${attr.name}={${attr.code}}`;
   // A double-quoted JSX attribute cannot hold a double quote, and escaping is not
   // something JSX attribute strings do — so a value carrying one becomes an expression.
-  return attr.value.includes('"')
-    ? `${attr.name}={${stringLiteral(attr.value)}}`
-    : `${attr.name}="${attr.value}"`;
+  //
+  // A newline is the same class of hazard and arrived with the first prop that could hold
+  // one in an *attribute* rather than in a text child (a Chart's typed-out series). Written
+  // between quotes it is legal JSX whose meaning is the transform's to decide, and it walks
+  // the rest of the element out of the printer's indentation besides. As an expression it
+  // is an ordinary escape, and says the same thing under every transform.
+  const risky = [...attr.value].some(
+    (character) =>
+      character === '"' ||
+      character === '\n' ||
+      character === '\r' ||
+      character.codePointAt(0) === LINE_SEPARATOR ||
+      character.codePointAt(0) === PARAGRAPH_SEPARATOR,
+  );
+
+  return risky ? `${attr.name}={${stringLiteral(attr.value)}}` : `${attr.name}="${attr.value}"`;
 }
 
 /** Re-indents an already-formatted block of statements to sit `depth` levels in. */
@@ -150,6 +173,16 @@ function printNode(node: JsxNode, depth: number): string[] {
     if (inner.length === 1 && line.length <= PRINT_WIDTH) return [line];
 
     return [`${pad}{${node.test} && (`, ...printNode(node.child, depth + 1), `${pad})}`];
+  }
+
+  if (node.kind === 'fallback') {
+    // `when`'s shape, and it shares the one-line guard for the same reason: taking [0] of a
+    // child that printed across several lines is what silently truncated a `map` once.
+    const inner = printNode(node.child, 0);
+    const line = `${pad}{${node.code} ?? ${inner.join('\n')}}`;
+    if (inner.length === 1 && line.length <= PRINT_WIDTH) return [line];
+
+    return [`${pad}{${node.code} ?? (`, ...printNode(node.child, depth + 1), `${pad})}`];
   }
 
   if (node.kind === 'map') {
@@ -186,9 +219,15 @@ function printNode(node: JsxNode, depth: number): string[] {
   // most of a generated page, and reads far better than the exploded form.
   const only = node.children.length === 1 ? node.children[0] : undefined;
   if (fits && only && only.kind !== 'element') {
-    const inner = printNode(only, 0)[0]!;
-    const line = `${pad}${open}>${inner}</${node.tag}>`;
-    if (line.length <= PRINT_WIDTH) return [line];
+    const printed = printNode(only, 0);
+    // Only when the child really is one line. A non-element child is usually an
+    // expression or a run of text and therefore is, but a `map` and a `cond` are not —
+    // and taking `[0]` of those silently dropped everything after their first line,
+    // producing `<tbody>{list(rows).map((row, index) => (</tbody>`. It stayed latent
+    // until a table's rows became a map; the guard is the fix, not the caller.
+    const inner = printed.length === 1 ? printed[0]! : null;
+    const line = inner === null ? null : `${pad}${open}>${inner}</${node.tag}>`;
+    if (line !== null && line.length <= PRINT_WIDTH) return [line];
   }
 
   const body = node.children.flatMap((child) => printNode(child, depth + 1));

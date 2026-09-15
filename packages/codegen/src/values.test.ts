@@ -44,6 +44,7 @@ const AWKWARD: unknown[] = [
 ];
 
 const TEXT_PROP: PropSpec = { name: 'text', label: 'Text', type: 'string' };
+const DATA_PROP: PropSpec = { name: 'rows', label: 'Rows', type: 'data' };
 const BOOL_PROP: PropSpec = { name: 'on', label: 'On', type: 'boolean' };
 const NUMBER_PROP: PropSpec = { name: 'rows', label: 'Rows', type: 'number' };
 const ENUM_PROP: PropSpec = {
@@ -64,6 +65,23 @@ describe('the export agrees with the canvas about', () => {
       // is `stringifyValue`, with `undefined` meaning "as if unset".
       const onCanvas = stringifyValue(coerceToProp(value, TEXT_PROP) ?? '');
       expect(text(value), `text(${JSON.stringify(value) ?? 'undefined'})`).toBe(onCanvas);
+    }
+  });
+
+  test('what a series prop is handed, which is whatever it was', () => {
+    for (const value of AWKWARD) {
+      // The export writes a bound `data` prop out with nothing around it (`as: 'data'`),
+      // so the canvas has to hand the component the same thing. Narrowing it the way a
+      // `text` prop is narrowed would give `buildTable` the JSON of an array instead of
+      // the array — the table renders as its own payload on the canvas and as a table in
+      // the export, which is D6 broken where a snapshot cannot see it.
+      const onCanvas = coerceToProp(value, DATA_PROP);
+
+      if (value === undefined || value === null || typeof value === 'boolean') {
+        expect(onCanvas, `data(${String(value)})`).toBeUndefined();
+      } else {
+        expect(onCanvas, `data(${JSON.stringify(value)})`).toBe(value);
+      }
     }
   });
 

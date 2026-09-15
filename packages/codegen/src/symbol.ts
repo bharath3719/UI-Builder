@@ -29,6 +29,7 @@ import {
   createWalk,
   isIdentifier,
   jsonLiteral,
+  overlayDeclaration,
   reads,
   walkNode,
   type SymbolTarget,
@@ -127,6 +128,11 @@ export function generateSymbol(
 
   const bindings = [
     ...(usesProps ? symbol.props.map((prop) => `${prop.name} = ${propDefault(prop)}`) : []),
+    // Before `className` because that is the order a reader expects — what the component
+    // renders, then how this one placement is styled. `walk.usesChildren` rather than the
+    // symbol containing a slot, so a slot inside a hidden subtree declares nothing: the
+    // generated project sets `noUnusedParameters`.
+    ...(walk.usesChildren ? ['children'] : []),
     'className',
   ];
 
@@ -134,6 +140,8 @@ export function generateSymbol(
   if (usesProps) {
     preamble.push(`const props = { ${symbol.props.map((prop) => prop.name).join(', ')} };`);
   }
+  const overlays = overlayDeclaration(walk);
+  if (overlays) preamble.push(overlays);
   if (walk.needsToasts) preamble.push('const { toasts, showToast } = useToasts();');
   if (walk.needsGoTo) preamble.push('const goTo = useGoTo();');
   preamble.push(...statements);
@@ -142,7 +150,13 @@ export function generateSymbol(
   const runtime: RuntimeModule[] = [];
   const lines: string[] = [];
 
-  const react = [...walk.eventTypes].sort().map((type) => `type ${type}`);
+  const react = [
+    ...(overlays ? ['useState'] : []),
+    // `ReactNode` annotates the children a slot receives. A type import among value
+    // imports, which is what the sorted `type X` members beside it already are.
+    ...(walk.usesChildren ? ['type ReactNode'] : []),
+    ...[...walk.eventTypes].sort().map((type) => `type ${type}`),
+  ];
   if (react.length > 0) lines.push(`import { ${react.join(', ')} } from 'react';`);
 
   if (walk.helpers.size > 0) {
@@ -181,6 +195,12 @@ export function generateSymbol(
   /* The props interface. */
   const fields = [
     ...symbol.props.map((prop) => `  ${propKey(prop)}?: ${propType(prop)};`),
+    ...(walk.usesChildren
+      ? [
+          '  /** What this placement puts in the slot. Omitted, the component’s own fallback shows. */',
+          '  children?: ReactNode;',
+        ]
+      : []),
     '  /** The one placement’s own styling, from whichever page or component placed it. */',
     '  className?: string;',
   ];

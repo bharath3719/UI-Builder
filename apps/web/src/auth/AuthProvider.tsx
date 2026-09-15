@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { AuthUser } from '@ui-builder/schema';
 import { logout as logoutRequest } from '../api/auth.js';
 import { onSessionLost, refreshSession, setAccessToken } from '../api/client.js';
+import { useToast } from '../toast/context.js';
 import { AuthContext, type AuthState } from './context.js';
 
 /**
@@ -17,6 +18,10 @@ import { AuthContext, type AuthState } from './context.js';
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null | undefined>(undefined);
   const queryClient = useQueryClient();
+  const toast = useToast();
+
+  /** Whether there is a session to lose — see the `onSessionLost` handler below. */
+  const hadSession = user !== null && user !== undefined;
 
   useEffect(() => {
     let cancelled = false;
@@ -35,10 +40,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(
     () =>
       onSessionLost(() => {
+        /*
+         * Only worth saying to someone who *had* a session. This same path runs on the
+         * first load of a signed-out visit, where the refresh cookie is simply absent —
+         * and "you have been signed out" is a strange thing to tell someone arriving at
+         * the sign-in page for the first time.
+         *
+         * `hadSession` is a dependency rather than something read inside the callback, so
+         * the handler is never closed over a stale `user`. It re-registers twice in a
+         * session, which is what `onSessionLost` returning an unsubscribe is for.
+         */
+        if (hadSession) {
+          toast.warn('You have been signed out. Please sign in again to continue.', {
+            title: 'Session ended',
+            key: 'session',
+          });
+        }
+
         setUser(null);
         queryClient.clear();
       }),
-    [queryClient],
+    [queryClient, toast, hadSession],
   );
 
   const signedIn = useCallback(

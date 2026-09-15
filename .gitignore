@@ -22,6 +22,9 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 
+# database dumps written by deploy/backup.sh on the server
+backups/
+
 # logs
 *.log
 npm-debug.log*

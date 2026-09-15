@@ -15,6 +15,9 @@ export * from './api/index.js';
 
 export * from './doc.js';
 export * from './expr.js';
+export * from './integrationRequest.js';
+export * from './powerbi.js';
+export * from './sample.js';
 export * from './migrate.js';
 export * from './ops.js';
 export * from './pages.js';
